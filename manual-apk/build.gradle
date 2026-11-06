@@ -1,0 +1,35 @@
+plugins {
+    id 'com.android.application' version '8.13.2'
+}
+
+android {
+    namespace 'com.talkreel.ar'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.talkreel.ar'
+        minSdk 26
+        targetSdk 34
+        versionCode 10
+        versionName '0.8.0'
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'AndroidManifest.xml'
+            java.srcDirs = ['src']
+            res.srcDirs = ['res']
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    implementation 'androidx.media3:media3-transformer:1.11.1'
+    implementation 'androidx.media3:media3-effect:1.11.1'
+    implementation 'androidx.media3:media3-common:1.11.1'
+}
