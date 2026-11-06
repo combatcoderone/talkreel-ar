@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - improve/backend-viral-score
   pull_request:
     branches:
       - main
