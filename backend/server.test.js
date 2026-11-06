@@ -47,6 +47,16 @@ test('viral score returns metrics and script-specific advice', async () => {
   assert.ok(Array.isArray(body.tips));
 });
 
+test('counts words and recognizes numbered opening hooks', async () => {
+  const script = '3 ways to make better videos with clear ideas and a stronger opening for viewers today';
+  const response = await postScore({ text: script, seconds: 30, captions: true, sound: true });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.wordCount, script.trim().split(/\\s+/).length);
+  assert.equal(body.hasHook, true);
+  assert.equal(body.estimatedWordsPerSecond, Number((body.wordCount / 30).toFixed(2)));
+});
+
 test('rejects missing, blank, and non-string script text', async () => {
   for (const payload of [{}, { text: '   ' }, { text: 42 }]) {
     assert.equal((await postScore(payload)).status, 400);
