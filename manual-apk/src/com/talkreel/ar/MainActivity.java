@@ -213,7 +213,7 @@ public class MainActivity extends Activity {
         previewBox.addView(frameView);
         root.addView(previewBox);
         TextView arNote = new TextView(this);
-        arNote.setText("AR face effects are live-preview overlays. Exported video remains on the existing camera recording path.");
+        arNote.setText("Frame FX are graphic overlays. Open AR Studio for ARCore 3D face tracking.");
         arNote.setTextColor(0xFFAAAAAA);
         arNote.setTextSize(11);
         arNote.setPadding(8, 3, 8, 5);
@@ -307,12 +307,12 @@ public class MainActivity extends Activity {
             }
         });
         rowPro.addView(faceButton);
-        final Button arFilterButton = UiStyle.dark(this, "AR: " + ProFrameView.filterName(AppState.arFilter));
+        final Button arFilterButton = UiStyle.dark(this, "Frame FX: " + ProFrameView.filterName(AppState.arFilter));
         arFilterButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.arFilter = (AppState.arFilter + 1) % ProFrameView.FILTER_COUNT;
                 frameView.setFilter(AppState.arFilter);
-                arFilterButton.setText("AR: " + ProFrameView.filterName(AppState.arFilter));
+                arFilterButton.setText("Frame FX: " + ProFrameView.filterName(AppState.arFilter));
                 savePrefs();
                 statusView.setText("AR preview: " + ProFrameView.filterName(AppState.arFilter) + " · Guide turns effects off");
             }
@@ -337,6 +337,18 @@ public class MainActivity extends Activity {
             public void onClick(View v) { openSocialApp("com.google.android.youtube", "YouTube"); }
         });
         row2.addView(ytButton);
+        Button arStudioButton = UiStyle.primary(this, "AR Studio");
+        arStudioButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                if (AppState.isRecording) {
+                    Toast.makeText(MainActivity.this, "Stop recording before opening AR Studio.", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                releaseCamera();
+                startActivity(new Intent(MainActivity.this, ArCoreFaceActivity.class));
+            }
+        });
+        row2.addView(arStudioButton);
         root.addView(row2);
 
         LinearLayout row2b = new LinearLayout(this);
