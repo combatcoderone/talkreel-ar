@@ -760,10 +760,10 @@ public class MainActivity extends Activity {
                 for (File file : allFiles) if (file.isFile() && file.getName().toLowerCase(Locale.US).endsWith(".mp4")) files.add(file);
             }
             if (!files.isEmpty()) {
-                java.util.Arrays.sort(files, new java.util.Comparator<File>() {
+                java.util.Collections.sort(files, new java.util.Comparator<File>() {
                     public int compare(File a, File b) { return Long.compare(b.lastModified(), a.lastModified()); }
                 });
-                AppState.lastFile = files[0].getAbsolutePath();
+                AppState.lastFile = files.get(0).getAbsolutePath();
             }
         }
         if (AppState.lastFile == null || AppState.lastFile.isEmpty()) {
