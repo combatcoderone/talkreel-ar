@@ -993,6 +993,10 @@ public class MainActivity extends Activity {
             Surface surface = new Surface(tex);
             previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             previewBuilder.addTarget(surface);
+            previewBuilder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
+            previewBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO);
+            previewBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
+            previewBuilder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO);
             previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
             cameraDevice.createCaptureSession(Arrays.asList(surface), new CameraCaptureSession.StateCallback() {
                 public void onConfigured(CameraCaptureSession session) {
@@ -1014,10 +1018,13 @@ public class MainActivity extends Activity {
             return;
         }
         recordingStarting = true;
+        statusView.setText("Preparing recording…");
+        recordButton.setEnabled(false);
         // v0.6.1: if the camera is not open yet, wait for it instead
         // of starting MediaRecorder with no camera, which left the
         // app in REC with no video. Retry up to 5 times, 400ms apart.
         if (cameraDevice == null) {
+            recordButton.setEnabled(true);
             openCamera();
             if (recordWaitCount < 5) {
                 recordingStarting = false;
@@ -1028,6 +1035,7 @@ public class MainActivity extends Activity {
             }
             recordWaitCount = 0;
             recordingStarting = false;
+            recordButton.setEnabled(true);
             Toast.makeText(this, "Camera is not ready. Close Instagram camera first, then try again.", Toast.LENGTH_LONG).show();
             return;
         }
@@ -1067,12 +1075,16 @@ public class MainActivity extends Activity {
                         public void run() {
                             try {
                                 SurfaceTexture tex = textureView.getSurfaceTexture();
-                                if (tex == null || cameraDevice == null) return;
+                                if (tex == null || cameraDevice == null) throw new IllegalStateException("Camera preview surface is unavailable.");
                                 tex.setDefaultBufferSize(AppState.exportWidth(), AppState.exportHeight());
                                 Surface previewSurface = new Surface(tex);
                                 previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
                                 previewBuilder.addTarget(previewSurface);
                                 previewBuilder.addTarget(recorderSurface);
+                                previewBuilder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
+                                previewBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO);
+                                previewBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
+                                previewBuilder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO);
                                 previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
                                 List<Surface> surfaces = new ArrayList<Surface>();
                                 surfaces.add(previewSurface);
@@ -1095,6 +1107,7 @@ public class MainActivity extends Activity {
                                                         MusicEngine.play(MainActivity.this, MusicCatalog.TRACKS[musicTrackIndex], true, mainHandler, null);
                                                     }
                                                     recordButton.setText("Stop");
+                                                    recordButton.setEnabled(true);
                                                     pauseButton.setEnabled(true);
                                                     statusView.setText("REC 0s  " + AppState.exportLabel());
                                                     mainHandler.post(ticker);
@@ -1141,7 +1154,7 @@ public class MainActivity extends Activity {
                     if (failed != null && failed.exists() && failed.length() == 0) failed.delete();
                     mainHandler.post(new Runnable() {
                         public void run() {
-                            if (recordButton != null) recordButton.setText("Record");
+                            if (recordButton != null) { recordButton.setText("Record"); recordButton.setEnabled(true); }
                             if (pauseButton != null) { pauseButton.setText("Pause"); pauseButton.setEnabled(false); }
                             String detail = error == null || error.getMessage() == null ? "Unknown camera error" : error.getMessage();
                             if (statusView != null) statusView.setText("Recording could not start: " + detail);
