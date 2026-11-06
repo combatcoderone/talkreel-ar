@@ -625,10 +625,10 @@ public class MainActivity extends Activity {
         super.onResume();
         if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
                 && textureView != null && textureView.isAvailable()) {
-            if (cameraDevice == null) {
+            if (cameraReleasedForSocial || cameraDevice == null) {
                 boolean hadReleased = cameraReleasedForSocial;
                 cameraReleasedForSocial = false;
-                mainHandler.postDelayed(new Runnable() { public void run() { openCamera(); } }, hadReleased ? 300 : 100);
+                mainHandler.postDelayed(new Runnable() { public void run() { openCamera(); } }, hadReleased ? 350 : 100);
             } else if (arCompositor == null && cameraHandler != null) {
                 cameraHandler.post(new Runnable() { public void run() { startPreview(); } });
             }
