@@ -631,6 +631,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        activityResumed = true;
         // v0.6.1: reopen if the camera is missing for any reason,
         // not only after Instagram or YouTube. That covers the
         // first launch after the permission dialog, and a surface
@@ -1030,6 +1031,7 @@ public class MainActivity extends Activity {
 
     private int recordWaitCount = 0;
     private boolean recordingStarting = false;
+    private boolean activityResumed = false;
     private void startRecording() {
         if (AppState.isRecording || recordingStarting) return;
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -1113,6 +1115,7 @@ public class MainActivity extends Activity {
                                     public void onConfigured(CameraCaptureSession session) {
                                         captureSession = session;
                                         try {
+                                            if (!activityResumed) throw new IllegalStateException("Recording cancelled because TalkReel left the foreground.");
                                             session.setRepeatingRequest(previewBuilder.build(), faceCallback, cameraHandler);
                                             mediaRecorder.start();
                                             AppState.isRecording = true;
@@ -1240,14 +1243,34 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onPause() {
+        activityResumed = false;
+        if (recordingStarting) failRecording(new IllegalStateException("Recording cancelled because TalkReel left the foreground."));
+        else if (AppState.isRecording) stopRecording();
+        super.onPause();
+    }
+
+    @Override
     protected void onDestroy() {
-        super.onDestroy();
-        try { unregisterReceiver(controlReceiver); } catch (Exception e) {}
         mainHandler.removeCallbacks(ticker);
         speechOn = false;
         stopCaptionListening();
         MusicEngine.stop();
+        try { unregisterReceiver(controlReceiver); } catch (Exception e) {}
+        if (cameraHandler != null) cameraHandler.post(new Runnable() {
+            public void run() {
+                try { if (captureSession != null) { captureSession.close(); captureSession = null; } } catch (Exception ignored) {}
+                try {
+                    if (mediaRecorder != null) {
+                        try { mediaRecorder.stop(); } catch (Exception ignored) {}
+                        mediaRecorder.release();
+                        mediaRecorder = null;
+                    }
+                } catch (Exception ignored) {}
+                try { if (cameraDevice != null) { cameraDevice.close(); cameraDevice = null; } } catch (Exception ignored) {}
+            }
+        });
         if (cameraThread != null) cameraThread.quitSafely();
-        if (cameraDevice != null) cameraDevice.close();
+        super.onDestroy();
     }
 }
