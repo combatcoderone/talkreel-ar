@@ -174,7 +174,7 @@ public class TalkReelService extends Service {
         overlayScroll = new ScrollView(this);
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams((int) (screenW * 0.74f), teleH);
         overlayScroll.setLayoutParams(sp);
-        overlayScroll.setVerticalScrollBarEnabled(true);
+        overlayScroll.setVerticalScrollBarEnabled(false);
         overlayScroll.setScrollbarFadingEnabled(false);
         overlayScroll.setScrollBarStyle(View.SCROLLBARS_INSIDE_INSET);
         overlayText = new TextView(this);
