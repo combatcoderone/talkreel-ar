@@ -624,6 +624,22 @@ public class MainActivity extends Activity {
             }
             return;
         }
+        if (requestCode == 3) {
+            boolean micOk = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            if (micOk) {
+                speechOn = true;
+                restartCount = 0;
+                windowStartAt = System.currentTimeMillis();
+                wordsInWindow = 0;
+                currentCaptionLang = AppState.langCode();
+                startCaptionListening();
+                statusView.setText("Captions on, " + AppState.langName());
+            } else {
+                statusView.setText("Microphone permission denied. Live captions are off.");
+                captionView.setText("Allow microphone access to use live captions.");
+            }
+            return;
+        }
         if (cameraOk) {
             mainHandler.postDelayed(new Runnable() { public void run() { openCamera(); } }, 200);
         } else {
@@ -635,6 +651,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         activityResumed = true;
+        if (speechOn && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startCaptionListening();
         // v0.6.1: reopen if the camera is missing for any reason,
         // not only after Instagram or YouTube. That covers the
         // first launch after the permission dialog, and a surface
@@ -811,6 +828,11 @@ public class MainActivity extends Activity {
         }
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             captionView.setText("Speech recognition is not available on this phone.");
+            return;
+        }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 3);
+            statusView.setText("Microphone permission is needed for live captions.");
             return;
         }
         speechOn = true;
@@ -1284,6 +1306,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         activityResumed = false;
+        if (speechOn) stopCaptionListening();
         if (recordingStarting) failRecording(new IllegalStateException("Recording cancelled because TalkReel left the foreground."));
         else if (AppState.isRecording) stopRecording();
         else releaseCamera();
