@@ -73,6 +73,7 @@ public class MainActivity extends Activity {
     private Button captionColorButton;
     private Button musicToggleButton;
     private TextView musicStatusView;
+    private int scriptEditorHeight = 260;
     private int musicTrackIndex = 0;
     private boolean useMusic = false;
     private CameraDevice cameraDevice;
@@ -150,6 +151,7 @@ public class MainActivity extends Activity {
         AppState.textColorIndex = prefs.getInt("textColor", 0);
         AppState.captionColorIndex = prefs.getInt("captionColor", 1);
         musicTrackIndex = prefs.getInt("musicTrack", 0);
+        scriptEditorHeight = prefs.getInt("scriptEditorHeight", 260);
         useMusic = prefs.getBoolean("useMusic", false);
         requestPermissions(new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS}, 1);
         cameraThread = new HandlerThread("CameraThread");
@@ -219,6 +221,9 @@ public class MainActivity extends Activity {
         teleprompterScroll.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 380));
         teleprompterScroll.setBackground(UiStyle.panelBg());
         teleprompterScroll.setPadding(16, 16, 16, 16);
+        teleprompterScroll.setVerticalScrollBarEnabled(true);
+        teleprompterScroll.setScrollbarFadingEnabled(false);
+        teleprompterScroll.setScrollBarStyle(View.SCROLLBARS_INSIDE_INSET);
         teleprompterView = new TextView(this);
         teleprompterView.setText(AppState.script);
         teleprompterView.setTextColor(AppState.textColor());
@@ -394,9 +399,27 @@ public class MainActivity extends Activity {
         scriptEdit.setHintTextColor(0xFF888888);
         scriptEdit.setTextColor(AppState.textColor());
         scriptEdit.setTextSize(16);
-        scriptEdit.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 110));
-        scriptEdit.setPadding(12, 12, 12, 12);
+        scriptEdit.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(160, Math.min(520, scriptEditorHeight))));
+        scriptEdit.setMinLines(5);
+        scriptEdit.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
+        scriptEdit.setVerticalScrollBarEnabled(true);
+        scriptEdit.setScrollbarFadingEnabled(false);
+        scriptEdit.setScrollBarStyle(View.SCROLLBARS_INSIDE_INSET);
+        scriptEdit.setPadding(16, 16, 16, 16);
         root.addView(scriptEdit);
+        LinearLayout editorSizeRow = new LinearLayout(this);
+        editorSizeRow.setOrientation(LinearLayout.HORIZONTAL);
+        Button editorSmaller = UiStyle.dark(this, "Editor −");
+        editorSmaller.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { resizeScriptEditor(-60); }
+        });
+        editorSizeRow.addView(editorSmaller);
+        Button editorLarger = UiStyle.dark(this, "Editor +");
+        editorLarger.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { resizeScriptEditor(60); }
+        });
+        editorSizeRow.addView(editorLarger);
+        root.addView(editorSizeRow);
 
         // v0.7.0 Music section, on its own. Real songs, not beeps.
         // Play: test a track first, streams if not downloaded yet.
@@ -414,6 +437,16 @@ public class MainActivity extends Activity {
         musicStatusView.setTextSize(13);
         musicStatusView.setPadding(8, 4, 8, 8);
         root.addView(musicStatusView);
+        LinearLayout musicList = new LinearLayout(this);
+        musicList.setOrientation(LinearLayout.VERTICAL);
+        ScrollView musicScroll = new ScrollView(this);
+        musicScroll.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 320));
+        musicScroll.setVerticalScrollBarEnabled(true);
+        musicScroll.setScrollbarFadingEnabled(false);
+        musicScroll.setScrollBarStyle(View.SCROLLBARS_INSIDE_INSET);
+        musicScroll.setBackground(UiStyle.panelBg());
+        musicScroll.addView(musicList);
+        root.addView(musicScroll);
         for (int ti = 0; ti < MusicCatalog.TRACKS.length; ti++) {
             final MusicCatalog.Track track = MusicCatalog.TRACKS[ti];
             final int trackIndex = ti;
@@ -424,7 +457,7 @@ public class MainActivity extends Activity {
             trackView.setTextColor(0xFFFFFFFF);
             trackView.setTextSize(14);
             trackView.setPadding(8, 8, 8, 4);
-            root.addView(trackView);
+            musicList.addView(trackView);
             LinearLayout musicRow = new LinearLayout(this);
             musicRow.setOrientation(LinearLayout.HORIZONTAL);
             Button playButton = UiStyle.dark(this, "Play");
@@ -466,7 +499,7 @@ public class MainActivity extends Activity {
                 }
             });
             musicRow.addView(useButton);
-            root.addView(musicRow);
+            musicList.addView(musicRow);
         }
         TextView musicNote = new TextView(this);
         musicNote.setText("Sources: Pixabay Music, free, no attribution, and Kevin MacLeod, CC BY 4.0, credit required. See docs/MUSIC.md for every track, license, and link. Music plays through the speaker while you record, it is not mixed into the video file yet.");
@@ -531,9 +564,18 @@ public class MainActivity extends Activity {
         if (frameView != null) frameView.postInvalidate();
     }
 
+    private void resizeScriptEditor(int delta) {
+        if (scriptEdit == null) return;
+        ViewGroup.LayoutParams lp = scriptEdit.getLayoutParams();
+        lp.height = Math.max(160, Math.min(520, lp.height + delta));
+        scriptEditorHeight = lp.height;
+        scriptEdit.setLayoutParams(lp);
+        savePrefs();
+    }
+
     private void savePrefs() {
         SharedPreferences prefs = getSharedPreferences("talkreel", MODE_PRIVATE);
-        prefs.edit().putString("script", AppState.script).putFloat("speed", AppState.speed).putInt("langMode", AppState.langMode).putBoolean("showFrame", AppState.showFrame).putBoolean("isPro", AppState.isPro).putInt("textColor", AppState.textColorIndex).putInt("captionColor", AppState.captionColorIndex).putInt("musicTrack", musicTrackIndex).putBoolean("useMusic", useMusic).apply();
+        prefs.edit().putString("script", AppState.script).putFloat("speed", AppState.speed).putInt("langMode", AppState.langMode).putBoolean("showFrame", AppState.showFrame).putBoolean("isPro", AppState.isPro).putInt("textColor", AppState.textColorIndex).putInt("captionColor", AppState.captionColorIndex).putInt("musicTrack", musicTrackIndex).putBoolean("useMusic", useMusic).putInt("scriptEditorHeight", scriptEditorHeight).apply();
     }
 
     private void releaseCamera() {
