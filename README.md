@@ -56,20 +56,24 @@ See `app/LEGACY.md`. Do not build `app/` and expect v0.7.0.
 - Volume Down starts and stops a clip.
 - Clips list, Share last clip by content URI, so it works on Android 7 and newer.
 
-### Overlay, two ways to use it
+### Overlay Companion and recording controls
 
-1. Record in TalkReel: best quality. TalkReel records the clip, then you
-   post it to Instagram or YouTube.
-2. Overlay over Instagram or YouTube: tap Overlay, allow Draw over other
-   apps, then open Instagram, YouTube, or TikTok. The floating teleprompter
-   stays on top, with Record, Pause, Stop, Face, Text colour, Music, and Close.
-   Drag it to move it.
+1. **TalkReel Studio:** TalkReel owns the camera and recording. Use Record,
+   Pause/Resume, and Stop in TalkReel. Face: On selects the front camera;
+   Face: Off selects the rear camera. This is the mode to use when you want
+   TalkReel to control the clip.
+2. **Overlay Companion:** Tap Overlay, allow Draw over other apps, then open
+   Instagram, YouTube, or TikTok. The compact overlay provides Start scroll,
+   Reset text, text colour, Music, Size − / Size +, and Close. Drag it to
+   reposition it. The script and music panels have independent scrolling.
 
-Android gives the camera to one app at a time, so TalkReel cannot record
-video while the Instagram camera is open. In overlay mode TalkReel shows
-only the script, while Instagram or YouTube records. In TalkReel record
-mode TalkReel records the clip to post after. That is an Android limit,
-not a bug in this app.
+Use the social app's native camera controls to start, pause, and stop a
+social-app recording. Android does not expose another app's camera or
+recording session to a third-party overlay, and only one app can own the
+camera at a time. For the same reason, Face: On/Off changes the camera used
+by TalkReel Studio; in Overlay Companion, switch the camera in Instagram,
+YouTube, or TikTok itself. TalkReel cannot place its own live camera feed
+inside another app's recording.
 
 ### Music, v0.7.0, new
 
