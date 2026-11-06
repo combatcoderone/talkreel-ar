@@ -1,1 +1,14 @@
-{"dependencies":{"cors":"^2.8.5","express":"^4.19.2"},"description":"Simple backend for TalkReel AR: trends, templates, viral score","main":"server.js","name":"talkreel-ar-backend","scripts":{"start":"node server.js"},"version":"0.1.0"}
+{
+  "name": "talkreel-ar-backend",
+  "version": "0.2.0",
+  "description": "Backend for TalkReel AR: trends, templates, and script scoring",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  }
+}
