@@ -169,7 +169,10 @@ public final class ArCoreFaceActivity extends Activity {
     }
 
     private void showError(String message) {
+        if(surfaceView!=null) { try { surfaceView.onPause(); } catch(Exception ignored) {} }
+        if(renderer!=null) renderer.setSession(null);
         if(session!=null) { try { session.pause(); } catch(Exception ignored) {} try { session.close(); } catch(Exception ignored) {} session=null; }
+        if(trackingStatus!=null) trackingStatus.setText("AR Studio unavailable");
         Toast.makeText(this, message, Toast.LENGTH_LONG).show();
         TextView error = new TextView(this);
         error.setText(message + "\n\nClose this screen and retry after resolving the issue.");
