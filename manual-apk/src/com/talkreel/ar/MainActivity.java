@@ -57,6 +57,7 @@ import java.util.Locale;
 public class MainActivity extends Activity {
     private static final int REQUEST_CAMERA_PERMISSION = 100;
     private static final int REQUEST_AUDIO_PERMISSION = 101;
+    private static final int REQUEST_OVERLAY_PERMISSION = 102;
     private TextureView textureView;
     private ArCompositor arCompositor;
     private ProFrameView frameView;
@@ -609,6 +610,13 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "Microphone permission is required to record audio.", Toast.LENGTH_LONG).show();
             }
         }
+        if (requestCode == REQUEST_OVERLAY_PERMISSION) {
+            if (granted) {
+                startOverlay();
+            } else {
+                Toast.makeText(this, "Camera and microphone permissions are required by the overlay service.", Toast.LENGTH_LONG).show();
+            }
+        }
     }
 
     @Override
@@ -667,6 +675,14 @@ public class MainActivity extends Activity {
     }
 
     private void startOverlay() {
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, REQUEST_OVERLAY_PERMISSION);
+            return;
+        }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQUEST_OVERLAY_PERMISSION);
+            return;
+        }
         AppState.script = scriptEdit.getText().toString();
         savePrefs();
         if (android.os.Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this)) {
