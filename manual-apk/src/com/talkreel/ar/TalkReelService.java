@@ -16,6 +16,7 @@ import android.util.DisplayMetrics;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -47,11 +48,13 @@ public class TalkReelService extends Service {
     private ScrollView overlayScroll;
     private Button recButton;
     private Button pauseButton;
+    private int overlayTeleHeight = 260;
+    private boolean overlayScrollRunning = false;
     private Handler handler = new Handler(Looper.getMainLooper());
     private Runnable ticker = new Runnable() {
         public void run() {
             refreshOverlayButtons();
-            if (overlayScroll != null && AppState.isRecording && !AppState.isPaused) {
+            if (overlayScroll != null && overlayScrollRunning) {
                 overlayScroll.scrollBy(0, (int) (6 * AppState.speed));
             }
             if (overlayView != null) handler.postDelayed(this, 500);
@@ -116,12 +119,9 @@ public class TalkReelService extends Service {
     }
 
     private void refreshOverlayButtons() {
-        if (recButton != null) recButton.setText(AppState.isRecording ? "Stop" : "Record");
-        if (pauseButton != null) pauseButton.setText(AppState.isPaused ? "Resume" : "Pause");
-        if (overlayTimer != null) {
-            if (AppState.isRecording) overlayTimer.setText(AppState.isPaused ? "Paused " + AppState.seconds + "s" : "REC " + AppState.seconds + "s");
-            else overlayTimer.setText("Ready  " + AppState.exportLabel());
-        }
+        if (recButton != null) recButton.setText(overlayScrollRunning ? "Pause scroll" : "Start scroll");
+        if (pauseButton != null) pauseButton.setText("Reset text");
+        if (overlayTimer != null) overlayTimer.setText(overlayScrollRunning ? "PROMPTER RUNNING  ·  use social app controls to record" : "PROMPTER PAUSED  ·  use social app controls to record");
     }
 
     private void showOverlay() {
@@ -151,22 +151,32 @@ public class TalkReelService extends Service {
         try { windowManager.getDefaultDisplay().getMetrics(dm); } catch (Exception e) {}
         int screenW = dm.widthPixels > 0 ? dm.widthPixels : 1080;
         int screenH = dm.heightPixels > 0 ? dm.heightPixels : 1920;
-        int teleH = (int) (screenH * 0.42);
+        int teleH = Math.max(180, Math.min(340, (int) (screenH * 0.22)));
+        overlayTeleHeight = teleH;
 
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setBackground(UiStyle.panelBg());
-        layout.setPadding(20, 20, 20, 20);
+        layout.setPadding(12, 12, 12, 12);
 
         overlayTimer = new TextView(this);
         overlayTimer.setText("Ready");
         overlayTimer.setTextColor(0xFFFFFFFF);
-        overlayTimer.setTextSize(13);
+        overlayTimer.setTextSize(12);
         layout.addView(overlayTimer);
+        TextView modeNote = new TextView(this);
+        modeNote.setText("COMPANION MODE  ·  Record, pause and stop with Instagram / YouTube / TikTok. Android does not let an overlay control another app's camera.");
+        modeNote.setTextColor(0xFFCCCCCC);
+        modeNote.setTextSize(11);
+        modeNote.setPadding(2, 4, 2, 8);
+        layout.addView(modeNote);
 
         overlayScroll = new ScrollView(this);
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(screenW - 64, teleH);
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams((int) (screenW * 0.74f), teleH);
         overlayScroll.setLayoutParams(sp);
+        overlayScroll.setVerticalScrollBarEnabled(true);
+        overlayScroll.setScrollbarFadingEnabled(false);
+        overlayScroll.setScrollBarStyle(View.SCROLLBARS_INSIDE_INSET);
         overlayText = new TextView(this);
         overlayText.setText(AppState.script);
         overlayText.setTextColor(AppState.textColor());
@@ -178,28 +188,23 @@ public class TalkReelService extends Service {
 
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        recButton = UiStyle.primary(this, AppState.isRecording ? "Stop" : "Record");
+        recButton = UiStyle.primary(this, "Start scroll");
         recButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                // Request only. Do not touch AppState here.
-                sendBroadcast(new Intent(AppState.ACTION_RECORD));
+                overlayScrollRunning = !overlayScrollRunning;
+                refreshOverlayButtons();
             }
         });
         row.addView(recButton);
-        pauseButton = UiStyle.dark(this, AppState.isPaused ? "Resume" : "Pause");
+        pauseButton = UiStyle.dark(this, "Reset text");
         pauseButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                sendBroadcast(new Intent(AppState.ACTION_PAUSE));
+                overlayScrollRunning = false;
+                if (overlayScroll != null) overlayScroll.scrollTo(0, 0);
+                refreshOverlayButtons();
             }
         });
         row.addView(pauseButton);
-        Button stopButton = UiStyle.dark(this, "Stop");
-        stopButton.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                sendBroadcast(new Intent(AppState.ACTION_STOP));
-            }
-        });
-        row.addView(stopButton);
         layout.addView(row);
 
         LinearLayout row2 = new LinearLayout(this);
@@ -214,6 +219,26 @@ public class TalkReelService extends Service {
             }
         });
         row2.addView(textButton);
+        Button smallerButton = UiStyle.dark(this, "Size −");
+        smallerButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                overlayTeleHeight = Math.max(160, overlayTeleHeight - 40);
+                ViewGroup.LayoutParams p = overlayScroll.getLayoutParams();
+                p.height = overlayTeleHeight;
+                overlayScroll.setLayoutParams(p);
+            }
+        });
+        row2.addView(smallerButton);
+        Button largerButton = UiStyle.dark(this, "Size +");
+        largerButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                overlayTeleHeight = Math.min(420, overlayTeleHeight + 40);
+                ViewGroup.LayoutParams p = overlayScroll.getLayoutParams();
+                p.height = overlayTeleHeight;
+                overlayScroll.setLayoutParams(p);
+            }
+        });
+        row2.addView(largerButton);
         // v0.7.0: old Sound button played synthesized beeps. Now it plays
         // the track picked in the Music section, streamed if not downloaded.
         final Button musicButton = UiStyle.dark(this, "Music");
@@ -240,7 +265,7 @@ public class TalkReelService extends Service {
 
         final WindowManager.LayoutParams params;
         if (Build.VERSION.SDK_INT >= 26) {
-            params = new WindowManager.LayoutParams(screenW - 32, WindowManager.LayoutParams.WRAP_CONTENT,
+            params = new WindowManager.LayoutParams((int) (screenW * 0.78f), WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT);
         } else {
@@ -281,6 +306,7 @@ public class TalkReelService extends Service {
     }
 
     private void stopOverlay() {
+        overlayScrollRunning = false;
         handler.removeCallbacks(ticker);
         MusicEngine.stop();
         if (overlayView != null && windowManager != null) {
