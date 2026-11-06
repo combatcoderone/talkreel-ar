@@ -13,6 +13,8 @@ public class AppState {
     public static volatile boolean isPaused = false;
     public static volatile int seconds = 0;
     public static volatile boolean showFrame = true;
+    // Snapchat-inspired live-preview face effect.
+    public static volatile int arFilter = ProFrameView.FILTER_GUIDE;
     public static volatile boolean faceFound = false;
     public static volatile float speed = 1.0f;
     public static volatile String script = "Hi, this is my honest review in 30 seconds.\n\nFirst, this is what I liked.\n\nSecond, this is what I did not like.\n\nMy verdict: yes, if you need it for daily use.";
