@@ -1,4 +1,5 @@
 name: Backend tests
+# Scope pull-request checks to backend changes; Android CI is independent.
 
 on:
   push:
