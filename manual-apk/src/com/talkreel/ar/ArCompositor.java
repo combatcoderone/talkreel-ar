@@ -56,7 +56,8 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     private EGL14Surface encoderEgl;
     private int program, textureId;
     private volatile int filter;
-    private int positionLoc, texCoordLoc, matrixLoc, filterLoc, faceRectLoc, hasFaceLoc, mirrorLoc;
+    private int positionLoc, texCoordLoc, matrixLoc, filterLoc, faceRectLoc, hasFaceLoc, mirrorLoc, samplerLoc;
+    private java.nio.FloatBuffer vertexBuffer, texBuffer;
     private volatile float faceLeft, faceTop, faceRight, faceBottom;
     private volatile boolean hasFace, mirrorFace;
     private final float[] transform = new float[16];
@@ -87,6 +88,13 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         faceRectLoc=GLES20.glGetUniformLocation(program,"uFaceRect");
         hasFaceLoc=GLES20.glGetUniformLocation(program,"uHasFace");
         mirrorLoc=GLES20.glGetUniformLocation(program,"uMirror");
+        samplerLoc=GLES20.glGetUniformLocation(program,"sTexture");
+        float[] vertices={-1,-1, 1,-1, -1,1, 1,1};
+        float[] tex={0,1, 1,1, 0,0, 1,0};
+        vertexBuffer=java.nio.ByteBuffer.allocateDirect(vertices.length*4).order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
+        vertexBuffer.put(vertices).position(0);
+        texBuffer=java.nio.ByteBuffer.allocateDirect(tex.length*4).order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
+        texBuffer.put(tex).position(0);
         return cameraInput;
     }
 
@@ -124,22 +132,18 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         GLES20.glUseProgram(program);
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES,textureId);
-        GLES20.glUniform1i(GLES20.glGetUniformLocation(program,"sTexture"),0);
+        GLES20.glUniform1i(samplerLoc,0);
         GLES20.glUniform1i(filterLoc,filter);
         GLES20.glUniform1i(hasFaceLoc,hasFace?1:0);
         GLES20.glUniform1i(mirrorLoc,mirrorFace?1:0);
         GLES20.glUniform4f(faceRectLoc,faceLeft,faceTop,faceRight,faceBottom);
         GLES20.glUniformMatrix4fv(matrixLoc,1,false,transform,0);
-        float[] vertices={-1,-1, 1,-1, -1,1, 1,1};
-        float[] tex={0,1, 1,1, 0,0, 1,0};
-        java.nio.FloatBuffer vb=java.nio.ByteBuffer.allocateDirect(vertices.length*4).order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
-        vb.put(vertices).position(0);
-        java.nio.FloatBuffer tb=java.nio.ByteBuffer.allocateDirect(tex.length*4).order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
-        tb.put(tex).position(0);
+        vertexBuffer.position(0);
+        texBuffer.position(0);
         GLES20.glEnableVertexAttribArray(positionLoc);
-        GLES20.glVertexAttribPointer(positionLoc,2,GLES20.GL_FLOAT,false,0,vb);
+        GLES20.glVertexAttribPointer(positionLoc,2,GLES20.GL_FLOAT,false,0,vertexBuffer);
         GLES20.glEnableVertexAttribArray(texCoordLoc);
-        GLES20.glVertexAttribPointer(texCoordLoc,2,GLES20.GL_FLOAT,false,0,tb);
+        GLES20.glVertexAttribPointer(texCoordLoc,2,GLES20.GL_FLOAT,false,0,texBuffer);
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4);
         GLES20.glDisableVertexAttribArray(positionLoc);
         GLES20.glDisableVertexAttribArray(texCoordLoc);
