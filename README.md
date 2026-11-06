@@ -21,9 +21,9 @@ also stay on top while Instagram or YouTube records.
 ## What is shipped
 
 The maintained Android source is plain Java in `manual-apk/src/`. The
-`:app` Gradle module compiles that source and includes ARCore. The manual
-build script is retained for local release-key builds and now expects Android
-SDK 36. `app/src/` remains a historical Kotlin prototype and is not used
+`:app` Gradle module compiles that source and includes ARCore. The manual build script invokes the same Gradle debug and lint tasks
+and expects JDK 17, Gradle 8.13, and Android SDK 36. Release signing is not
+configured in this development branch. `app/src/` remains a historical Kotlin prototype and is not used
 by the current build.
 
 ## What v0.8.0 changes
