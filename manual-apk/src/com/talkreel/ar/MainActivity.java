@@ -80,6 +80,7 @@ public class MainActivity extends Activity {
     private boolean useMusic = false;
     private CameraDevice cameraDevice;
     private CameraCaptureSession captureSession;
+    private Surface previewSurface;
     private CaptureRequest.Builder previewBuilder;
     private MediaRecorder mediaRecorder;
     private HandlerThread cameraThread;
@@ -596,6 +597,7 @@ public class MainActivity extends Activity {
             public void onSurfaceTextureSizeChanged(SurfaceTexture s, int w, int h) {}
             public boolean onSurfaceTextureDestroyed(SurfaceTexture s) {
                 try { if (captureSession != null) { captureSession.close(); captureSession = null; } } catch (Exception e) {}
+                try { if (previewSurface != null) { previewSurface.release(); previewSurface = null; } } catch (Exception e) {}
                 return true;
             }
             public void onSurfaceTextureUpdated(SurfaceTexture s) {}
@@ -666,6 +668,7 @@ public class MainActivity extends Activity {
         try {
             if (captureSession != null) { captureSession.close(); captureSession = null; }
         } catch (Exception e) {}
+        try { if (previewSurface != null) { previewSurface.release(); previewSurface = null; } } catch (Exception e) {}
         try {
             if (cameraDevice != null) { cameraDevice.close(); cameraDevice = null; }
         } catch (Exception e) {}
@@ -1034,15 +1037,17 @@ public class MainActivity extends Activity {
             SurfaceTexture tex = textureView.getSurfaceTexture();
             if (tex == null) return;
             tex.setDefaultBufferSize(720, 1280);
-            Surface surface = new Surface(tex);
+            if (captureSession != null) { captureSession.close(); captureSession = null; }
+            if (previewSurface != null) { previewSurface.release(); previewSurface = null; }
+            previewSurface = new Surface(tex);
             previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-            previewBuilder.addTarget(surface);
+            previewBuilder.addTarget(previewSurface);
             previewBuilder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
             previewBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO);
             previewBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
             previewBuilder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO);
             previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
-            cameraDevice.createCaptureSession(Arrays.asList(surface), new CameraCaptureSession.StateCallback() {
+            cameraDevice.createCaptureSession(Arrays.asList(previewSurface), new CameraCaptureSession.StateCallback() {
                 public void onConfigured(CameraCaptureSession session) {
                     captureSession = session;
                     try { session.setRepeatingRequest(previewBuilder.build(), faceCallback, cameraHandler); } catch (Exception e) {}
@@ -1111,7 +1116,7 @@ public class MainActivity extends Activity {
                     mediaRecorder.setVideoFrameRate(30);
                     File dir = AppStorage.videoDir(MainActivity.this);
                     dir.mkdirs();
-                    String name = "TalkReel-" + new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.US).format(new Date()) + ".mp4";
+                    String name = "TalkReel-" + new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US).format(new Date()) + ".mp4";
                     File out = new File(dir, name);
                     AppState.lastFile = out.getAbsolutePath();
                     mediaRecorder.setOutputFile(out.getAbsolutePath());
@@ -1123,7 +1128,9 @@ public class MainActivity extends Activity {
                                 SurfaceTexture tex = textureView.getSurfaceTexture();
                                 if (tex == null || cameraDevice == null) throw new IllegalStateException("Camera preview surface is unavailable.");
                                 tex.setDefaultBufferSize(AppState.exportWidth(), AppState.exportHeight());
-                                Surface previewSurface = new Surface(tex);
+                                if (captureSession != null) { captureSession.close(); captureSession = null; }
+                                if (previewSurface != null) { previewSurface.release(); previewSurface = null; }
+                                previewSurface = new Surface(tex);
                                 previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
                                 previewBuilder.addTarget(previewSurface);
                                 previewBuilder.addTarget(recorderSurface);
@@ -1197,6 +1204,8 @@ public class MainActivity extends Activity {
                             mediaRecorder = null;
                         }
                     } catch (Exception ignored) {}
+                    try { if (captureSession != null) { captureSession.close(); captureSession = null; } } catch (Exception ignored) {}
+                    try { if (previewSurface != null) { previewSurface.release(); previewSurface = null; } } catch (Exception ignored) {}
                     final File failed = AppState.lastFile == null ? null : new File(AppState.lastFile);
                     if (failed != null && failed.exists() && failed.length() == 0) failed.delete();
                     mainHandler.post(new Runnable() {
@@ -1233,10 +1242,15 @@ public class MainActivity extends Activity {
                     try { if (mediaRecorder != null) mediaRecorder.release(); } catch (Exception ignored) {}
                     mediaRecorder = null;
                 }
+                try { if (captureSession != null) { captureSession.close(); captureSession = null; } } catch (Exception ignored) {}
+                try { if (previewSurface != null) { previewSurface.release(); previewSurface = null; } } catch (Exception ignored) {}
                 CaptionStore.finish(finalSec);
                 SilenceLog.finish(finalSec);
                 File clip = new File(AppState.lastFile);
-                if (stopError != null && clip.exists() && clip.length() < 4096) clip.delete();
+                if (stopError != null) {
+                    if (clip.exists()) clip.delete();
+                    AppState.lastFile = "";
+                }
                 android.net.Uri galleryUri = stopError == null ? MediaLibrary.publishVideo(getContentResolver(), clip) : null;
                 String extra = galleryUri != null ? " Also published to Movies/TalkReelAR." : "";
                 if (AppState.isPro && clip.exists()) {
@@ -1283,7 +1297,6 @@ public class MainActivity extends Activity {
         try { unregisterReceiver(controlReceiver); } catch (Exception e) {}
         if (cameraHandler != null) cameraHandler.post(new Runnable() {
             public void run() {
-                try { if (captureSession != null) { captureSession.close(); captureSession = null; } } catch (Exception ignored) {}
                 try {
                     if (mediaRecorder != null) {
                         try { mediaRecorder.stop(); } catch (Exception ignored) {}
@@ -1291,6 +1304,8 @@ public class MainActivity extends Activity {
                         mediaRecorder = null;
                     }
                 } catch (Exception ignored) {}
+                try { if (captureSession != null) { captureSession.close(); captureSession = null; } } catch (Exception ignored) {}
+                try { if (previewSurface != null) { previewSurface.release(); previewSurface = null; } } catch (Exception ignored) {}
                 try { if (cameraDevice != null) { cameraDevice.close(); cameraDevice = null; } } catch (Exception ignored) {}
             }
         });
