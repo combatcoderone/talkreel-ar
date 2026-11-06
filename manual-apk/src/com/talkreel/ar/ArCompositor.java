@@ -30,6 +30,7 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         "else if(uFilter==3){ c.rgb=mix(c.rgb,vec3(.95,.56,.68),.08); } " +
         "else if(uFilter==4){ c.rgb=min(vec3(1.0),c.rgb*1.18); } " +
         "else if(uFilter==5){ float l=dot(c.rgb,vec3(.299,.587,.114)); c.rgb=mix(c.rgb,vec3(l*.35,l*.9, min(1.0,l*1.5)),.32); } " +
+        "else if(uFilter==6){ vec3 soft=(texture2D(sTexture,vTexCoord+vec2(.002,0.)).rgb+texture2D(sTexture,vTexCoord-vec2(.002,0.)).rgb+texture2D(sTexture,vTexCoord+vec2(0.,.002)).rgb+texture2D(sTexture,vTexCoord-vec2(0.,.002)).rgb)*.25; c.rgb=mix(c.rgb,soft,.24); c.rgb=min(vec3(1.0),c.rgb*1.04); } " +
         "gl_FragColor=c; }";
 
     private final Handler handler;
@@ -40,7 +41,8 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     private EGL14Surface previewEgl;
     private Surface encoderSurface;
     private EGL14Surface encoderEgl;
-    private int program, textureId, filter;
+    private int program, textureId;
+    private volatile int filter;
     private int positionLoc, texCoordLoc, matrixLoc, filterLoc;
     private final float[] transform = new float[16];
     private boolean released;
