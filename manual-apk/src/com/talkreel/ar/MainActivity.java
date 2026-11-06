@@ -439,7 +439,8 @@ public class MainActivity extends Activity {
         scriptEdit.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(160, Math.min(520, scriptEditorHeight))));
         scriptEdit.setMinLines(5);
         scriptEdit.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
-        scriptEdit.setVerticalScrollBarEnabled(true);
+        // Avoid null themed scrollbar drawable crashes; text editing and scrolling still work.
+        scriptEdit.setVerticalScrollBarEnabled(false);
         scriptEdit.setScrollbarFadingEnabled(false);
         scriptEdit.setScrollBarStyle(View.SCROLLBARS_INSIDE_INSET);
         scriptEdit.setPadding(16, 16, 16, 16);
