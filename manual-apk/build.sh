@@ -22,8 +22,8 @@ if [ ! -f release.keystore ]; then
   echo "Error: release.keystore not found in manual-apk/. Create your own keystore first, do not commit it." >&2
   exit 1
 fi
-ANDROID_JAR="$SDK/platforms/android-34/android.jar"
-BT="$SDK/build-tools/34.0.0"
+ANDROID_JAR="$SDK/platforms/android-36/android.jar"
+BT="$SDK/build-tools/36.0.0"
 export JAVA_HOME="$JDK"
 export PATH="$JDK/bin:$PATH"
 rm -rf out classes dex compiled.zip unsigned.apk aligned.apk app-debug.apk
