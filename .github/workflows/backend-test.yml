@@ -1,0 +1,29 @@
+name: Backend tests
+
+on:
+  push:
+    branches:
+      - main
+      - improve/backend-viral-score
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+      - name: Run backend tests
+        working-directory: backend
+        run: npm test
