@@ -717,7 +717,7 @@ public class MainActivity extends Activity {
     }
 
     private void showClips() {
-        File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "TalkReelAR");
+        File dir = AppStorage.videoDir(this);
         File[] files = dir.listFiles();
         if (files == null || files.length == 0) {
             statusView.setText("No clips yet");
@@ -731,7 +731,7 @@ public class MainActivity extends Activity {
 
     private void shareLastClip() {
         if (AppState.lastFile == null || AppState.lastFile.isEmpty()) {
-            File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "TalkReelAR");
+            File dir = AppStorage.videoDir(this);
             File[] files = dir.listFiles();
             if (files != null && files.length > 0) {
                 java.util.Arrays.sort(files, new java.util.Comparator<File>() {
@@ -1108,7 +1108,7 @@ public class MainActivity extends Activity {
                     mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
                     mediaRecorder.setVideoSize(AppState.exportWidth(), AppState.exportHeight());
                     mediaRecorder.setVideoFrameRate(30);
-                    File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "TalkReelAR");
+                    File dir = AppStorage.videoDir(this);
                     dir.mkdirs();
                     String name = "TalkReel-" + new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.US).format(new Date()) + ".mp4";
                     File out = new File(dir, name);
@@ -1194,8 +1194,8 @@ public class MainActivity extends Activity {
                     public void run() {
                         recordButton.setText("Record");
                         pauseButton.setText("Pause");
-                        statusView.setText("Saved to Movies/TalkReelAR." + msg);
-                        Toast.makeText(MainActivity.this, "Saved to Movies/TalkReelAR", Toast.LENGTH_LONG).show();
+                        statusView.setText("Saved to TalkReel AR storage." + msg);
+                        Toast.makeText(MainActivity.this, "Saved to TalkReel AR storage", Toast.LENGTH_LONG).show();
                         startPreview();
                     }
                 });
