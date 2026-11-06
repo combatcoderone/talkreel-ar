@@ -1,6 +1,7 @@
 package com.talkreel.ar;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
@@ -143,6 +144,7 @@ public class MainActivity extends Activity {
     };
 
     @Override
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         SharedPreferences prefs = getSharedPreferences("talkreel", MODE_PRIVATE);
