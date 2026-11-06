@@ -900,7 +900,7 @@ public class MainActivity extends Activity {
                     frameView.setFaces(rects);
                     if (arCompositor != null && !rects.isEmpty()) {
                         Rect face = rects.get(0);
-                        arCompositor.setFaceRect(face.left/(float)vw, face.top/(float)vh, face.right/(float)vw, face.bottom/(float)vh, false);
+                        arCompositor.setFaceRect(face.left/(float)vw, face.top/(float)vh, face.right/(float)vw, face.bottom/(float)vh, isFrontCamera);
                     }
                     return;
                 }
