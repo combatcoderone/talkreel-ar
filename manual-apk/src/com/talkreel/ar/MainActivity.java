@@ -932,6 +932,7 @@ public class MainActivity extends Activity {
     }
 
     private Rect activeArray = null;
+    private volatile int faceDetectMode = CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF;
     private boolean isFrontCamera = true;
     private CameraCaptureSession.CaptureCallback faceCallback = new CameraCaptureSession.CaptureCallback() {
         @Override
@@ -1006,6 +1007,14 @@ public class MainActivity extends Activity {
                     if (cameraId == null) cameraId = cameraIds[0];
                     CameraCharacteristics chars = manager.getCameraCharacteristics(cameraId);
                     activeArray = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+                    faceDetectMode = CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF;
+                    int[] faceModes = chars.get(CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES);
+                    if (faceModes != null) {
+                        for (int mode : faceModes) if (mode == CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL) faceDetectMode = mode;
+                        if (faceDetectMode == CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF) {
+                            for (int mode : faceModes) if (mode == CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE) faceDetectMode = mode;
+                        }
+                    }
                     Integer facing = chars.get(CameraCharacteristics.LENS_FACING);
                     isFrontCamera = facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT;
                     manager.openCamera(cameraId, new CameraDevice.StateCallback() {
@@ -1061,7 +1070,7 @@ public class MainActivity extends Activity {
             arCompositor.setFilter(AppState.arFilter);
             previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             previewBuilder.addTarget(cameraSurface);
-            previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
+            previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, faceDetectMode);
             if (captureSession != null) {
                 try { captureSession.close(); } catch (Exception ignored) {}
                 captureSession = null;
@@ -1152,7 +1161,7 @@ public class MainActivity extends Activity {
                     if (captureSession != null) captureSession.close();
                     previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
                     previewBuilder.addTarget(cameraSurface);
-                    previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
+                    previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, faceDetectMode);
                     cameraDevice.createCaptureSession(Arrays.asList(cameraSurface), new CameraCaptureSession.StateCallback() {
                         public void onConfigured(CameraCaptureSession session) {
                             captureSession = session;
