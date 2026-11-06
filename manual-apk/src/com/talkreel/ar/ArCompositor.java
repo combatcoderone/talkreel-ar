@@ -53,13 +53,15 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         released=false;
         egl=new EGLDisplayHolder();
         egl.open();
+        previewTexture.setDefaultBufferSize(width,height);
+        previewSurface=new Surface(previewTexture);
+        previewEgl=new EGL14Surface(egl,previewSurface);
+        if(!previewEgl.makeCurrent()) throw new RuntimeException("EGL preview context activation failed");
         textureId=createExternalTexture();
         cameraTexture=new SurfaceTexture(textureId);
         cameraTexture.setDefaultBufferSize(width,height);
         cameraTexture.setOnFrameAvailableListener(this,handler);
         cameraInput=new Surface(cameraTexture);
-        previewSurface=new Surface(previewTexture);
-        previewEgl=new EGL14Surface(egl,previewSurface);
         program=createProgram(VERTEX,FRAGMENT);
         positionLoc=GLES20.glGetAttribLocation(program,"aPosition");
         texCoordLoc=GLES20.glGetAttribLocation(program,"aTexCoord");
