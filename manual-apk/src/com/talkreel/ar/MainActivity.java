@@ -972,6 +972,7 @@ public class MainActivity extends Activity {
             if (tex == null) return;
             if (arCompositor == null) arCompositor = new ArCompositor(cameraHandler);
             Surface cameraSurface = arCompositor.start(tex, 720, 1280);
+            arCompositor.setFilter(AppState.arFilter);
             previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             previewBuilder.addTarget(cameraSurface);
             previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
