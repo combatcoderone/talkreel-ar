@@ -27,18 +27,24 @@ public class MusicEngine {
     private static String playingTitle = null;
 
     public static File musicDir(Context context) {
-        File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "TalkReelAR");
-        dir.mkdirs();
-        return dir;
+        return AppStorage.musicDir(context);
     }
 
+    /** New downloads are stored in app-specific music storage (no broad storage permission). */
     public static File localFile(Context context, MusicCatalog.Track track) {
         return new File(musicDir(context), track.fileName);
     }
 
+    /** Read older downloads from the former public Music/TalkReelAR folder when present. */
+    private static File legacyFile(MusicCatalog.Track track) {
+        File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "TalkReelAR");
+        return new File(dir, track.fileName);
+    }
+
     public static boolean isDownloaded(Context context, MusicCatalog.Track track) {
-        File f = localFile(context, track);
-        return f.exists() && f.length() > 10000;
+        File current = localFile(context, track);
+        File legacy = legacyFile(track);
+        return (current.exists() && current.length() > 10000) || (legacy.exists() && legacy.length() > 10000);
     }
 
     public static boolean isPlaying() {
@@ -60,8 +66,11 @@ public class MusicEngine {
             player = new MediaPlayer();
             player.setLooping(loop);
             File local = localFile(context, track);
+            File legacy = legacyFile(track);
             if (local.exists() && local.length() > 10000) {
                 player.setDataSource(local.getAbsolutePath());
+            } else if (legacy.exists() && legacy.length() > 10000) {
+                player.setDataSource(legacy.getAbsolutePath());
             } else {
                 player.setDataSource(track.downloadUrl);
             }
