@@ -730,7 +730,9 @@ public class MainActivity extends Activity {
         } catch (Exception e) {}
         Toast.makeText(this, appName + " is not installed on this phone.", Toast.LENGTH_LONG).show();
         statusView.setText(appName + " not installed");
-        if (textureView != null && textureView.isAvailable()) openCamera();
+        if (textureView != null && textureView.isAvailable()) {
+            mainHandler.postDelayed(new Runnable() { public void run() { openCamera(); } }, 350);
+        }
     }
 
     private void showClips() {
