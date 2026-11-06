@@ -2,7 +2,7 @@
 
 Talk, record, and post. AR teleprompter app for Reels, Shorts, and TikTok.
 
-Version: 0.7.0
+Version: 0.8.0
 Package: com.talkreel.ar
 Repo: combatcoderone/talkreel-ar
 Min SDK: 26 (Android 8.0), Target SDK: 34 (Android 14)
@@ -24,6 +24,23 @@ That is what produced v0.7.0. See `manual-apk/build.sh`.
 `app/` is an older v0.1 Kotlin Compose prototype. It is kept for history
 only, it is NOT the shipped app, and it does not have the v0.2 to v0.7 fixes.
 See `app/LEGACY.md`. Do not build `app/` and expect v0.7.0.
+
+## What v0.8.0 changes
+
+- Larger script editor (260 dp default) with Editor − / Editor + sizing,
+  persistent height, and a visible scrollbar.
+- Teleprompter and music catalog have independent visible scrollbars.
+- Face mode selects the front camera (Face: On) or rear camera (Face: Off)
+  for recordings made inside TalkReel. The setting is saved.
+- Overlay Companion is narrower and shorter so it obscures less of the
+  social video. Its teleprompter panel has visible scrolling and Size − /
+  Size + controls.
+- Overlay Companion has independent Start scroll and Reset text controls.
+  It does not pretend to start or stop Instagram/YouTube/TikTok recording:
+  Android does not provide third-party apps a supported way to control
+  another app's camera or recording session. Use the social app's native
+  record/pause/stop controls. For TalkReel-owned clips, use Studio mode's
+  Record, Pause/Resume, and Stop controls.
 
 ## What v0.7.0 does
 
@@ -126,7 +143,8 @@ export from TalkReel. The downloaded file is already on your phone.
   or tint. See docs/PRO.md.
 - Text colour and Caption colour buttons, cycling White, Yellow, Green,
   Cyan, Orange, Pink, saved in settings.
-- Face: On button, on by default, kept on until you turn it off.
+- Face mode: Front camera (Face: On) or rear camera (Face: Off) for
+  recordings made inside TalkReel. Choose before recording.
 - Pro tier, preview only, payment NOT wired yet: Free is 720x1280, Pro is
   1080x1920, plus SRT captions, silence cut list, and full Script Coach.
   Real payment is Google Play Billing, to be added before Play release.
