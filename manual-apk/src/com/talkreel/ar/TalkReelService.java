@@ -20,7 +20,6 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -45,7 +44,7 @@ public class TalkReelService extends Service {
     private View overlayView;
     private TextView overlayText;
     private TextView overlayTimer;
-    private ScrollView overlayScroll;
+    private SafeScrollView overlayScroll;
     private Button recButton;
     private Button pauseButton;
     private int overlayTeleHeight = 260;
@@ -171,12 +170,10 @@ public class TalkReelService extends Service {
         modeNote.setPadding(2, 4, 2, 8);
         layout.addView(modeNote);
 
-        overlayScroll = new ScrollView(this);
+        overlayScroll = new SafeScrollView(this);
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams((int) (screenW * 0.74f), teleH);
         overlayScroll.setLayoutParams(sp);
         overlayScroll.setVerticalScrollBarEnabled(false);
-        overlayScroll.setScrollbarFadingEnabled(false);
-        overlayScroll.setScrollBarStyle(View.SCROLLBARS_INSIDE_INSET);
         overlayText = new TextView(this);
         overlayText.setText(AppState.script);
         overlayText.setTextColor(AppState.textColor());
