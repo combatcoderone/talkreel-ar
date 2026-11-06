@@ -16,7 +16,7 @@ import java.util.List;
  * The MediaRecorder/camera pipeline is intentionally left unchanged. */
 public class ProFrameView extends View {
     public static final int FILTER_GUIDE=0, FILTER_GLOW=1, FILTER_GLASSES=2,
-        FILTER_BUNNY=3, FILTER_CROWN=4, FILTER_NEON=5, FILTER_COUNT=6;
+        FILTER_BUNNY=3, FILTER_CROWN=4, FILTER_NEON=5, FILTER_BEAUTY=6, FILTER_COUNT=7;
     private List<Rect> faces = new ArrayList<Rect>();
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private int filter = FILTER_GUIDE;
@@ -29,7 +29,7 @@ public class ProFrameView extends View {
         switch(v) {
             case FILTER_GLOW:return "Glow"; case FILTER_GLASSES:return "Glasses";
             case FILTER_BUNNY:return "Bunny"; case FILTER_CROWN:return "Crown";
-            case FILTER_NEON:return "Neon"; default:return "Guide";
+            case FILTER_NEON:return "Neon"; case FILTER_BEAUTY:return "Beauty"; default:return "Guide";
         }
     }
     public void setFaces(List<Rect> f) {
