@@ -148,6 +148,7 @@ public class MainActivity extends Activity {
         AppState.speed = prefs.getFloat("speed", 1.0f);
         AppState.langMode = prefs.getInt("langMode", 0);
         AppState.showFrame = prefs.getBoolean("showFrame", true);
+        AppState.arFilter = prefs.getInt("arFilter", ProFrameView.FILTER_GUIDE);
         AppState.isPro = prefs.getBoolean("isPro", false);
         AppState.textColorIndex = prefs.getInt("textColor", 0);
         AppState.captionColorIndex = prefs.getInt("captionColor", 1);
@@ -209,6 +210,7 @@ public class MainActivity extends Activity {
         previewBox.addView(textureView);
         frameView = new ProFrameView(this);
         frameView.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        frameView.setFilter(AppState.arFilter);
         previewBox.addView(frameView);
         root.addView(previewBox);
 
@@ -302,6 +304,17 @@ public class MainActivity extends Activity {
             }
         });
         rowPro.addView(faceButton);
+        final Button arFilterButton = UiStyle.dark(this, "AR: " + ProFrameView.filterName(AppState.arFilter));
+        arFilterButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                AppState.arFilter = (AppState.arFilter + 1) % ProFrameView.FILTER_COUNT;
+                frameView.setFilter(AppState.arFilter);
+                arFilterButton.setText("AR: " + ProFrameView.filterName(AppState.arFilter));
+                savePrefs();
+                statusView.setText("AR preview: " + ProFrameView.filterName(AppState.arFilter) + " · Guide turns effects off");
+            }
+        });
+        rowPro.addView(arFilterButton);
         root.addView(rowPro);
 
         LinearLayout row2 = new LinearLayout(this);
