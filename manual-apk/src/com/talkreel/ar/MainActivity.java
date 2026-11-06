@@ -733,7 +733,7 @@ public class MainActivity extends Activity {
     }
 
     private void showClips() {
-        File dir = AppStorage.videoDir(this);
+        File dir = AppStorage.videoDir(MainActivity.this);
         File[] files = dir.listFiles();
         if (files == null || files.length == 0) {
             statusView.setText("No clips yet");
@@ -747,7 +747,7 @@ public class MainActivity extends Activity {
 
     private void shareLastClip() {
         if (AppState.lastFile == null || AppState.lastFile.isEmpty()) {
-            File dir = AppStorage.videoDir(this);
+            File dir = AppStorage.videoDir(MainActivity.this);
             File[] files = dir.listFiles();
             if (files != null && files.length > 0) {
                 java.util.Arrays.sort(files, new java.util.Comparator<File>() {
@@ -1124,7 +1124,7 @@ public class MainActivity extends Activity {
                     mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
                     mediaRecorder.setVideoSize(AppState.exportWidth(), AppState.exportHeight());
                     mediaRecorder.setVideoFrameRate(30);
-                    File dir = AppStorage.videoDir(this);
+                    File dir = AppStorage.videoDir(MainActivity.this);
                     dir.mkdirs();
                     String name = "TalkReel-" + new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.US).format(new Date()) + ".mp4";
                     File out = new File(dir, name);
