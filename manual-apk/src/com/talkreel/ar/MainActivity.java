@@ -56,6 +56,7 @@ import java.util.Locale;
 // Overlay: never shown automatically on Record. Only when
 // the user taps Overlay. Overlay buttons only send a request,
 // they never change state here.
+@SuppressLint("UnspecifiedRegisterReceiverFlag")
 public class MainActivity extends Activity {
     private TextureView textureView;
     private ProFrameView frameView;
@@ -144,7 +145,6 @@ public class MainActivity extends Activity {
     };
 
     @Override
-    @SuppressLint("UnspecifiedRegisterReceiverFlag")
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         SharedPreferences prefs = getSharedPreferences("talkreel", MODE_PRIVATE);
