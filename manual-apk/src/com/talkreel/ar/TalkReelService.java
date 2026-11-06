@@ -49,11 +49,12 @@ public class TalkReelService extends Service {
     private Button recButton;
     private Button pauseButton;
     private int overlayTeleHeight = 260;
+    private boolean overlayScrollRunning = false;
     private Handler handler = new Handler(Looper.getMainLooper());
     private Runnable ticker = new Runnable() {
         public void run() {
             refreshOverlayButtons();
-            if (overlayScroll != null && AppState.isRecording && !AppState.isPaused) {
+            if (overlayScroll != null && overlayScrollRunning) {
                 overlayScroll.scrollBy(0, (int) (6 * AppState.speed));
             }
             if (overlayView != null) handler.postDelayed(this, 500);
@@ -118,12 +119,9 @@ public class TalkReelService extends Service {
     }
 
     private void refreshOverlayButtons() {
-        if (recButton != null) recButton.setText(AppState.isRecording ? "Stop clip" : "Start clip");
-        if (pauseButton != null) pauseButton.setText(AppState.isPaused ? "Resume" : "Pause");
-        if (overlayTimer != null) {
-            if (AppState.isRecording) overlayTimer.setText(AppState.isPaused ? "Paused " + AppState.seconds + "s" : "REC " + AppState.seconds + "s");
-            else overlayTimer.setText("Ready  " + AppState.exportLabel());
-        }
+        if (recButton != null) recButton.setText(overlayScrollRunning ? "Pause scroll" : "Start scroll");
+        if (pauseButton != null) pauseButton.setText("Reset text");
+        if (overlayTimer != null) overlayTimer.setText(overlayScrollRunning ? "PROMPTER RUNNING  ·  use social app controls to record" : "PROMPTER PAUSED  ·  use social app controls to record");
     }
 
     private void showOverlay() {
@@ -164,8 +162,14 @@ public class TalkReelService extends Service {
         overlayTimer = new TextView(this);
         overlayTimer.setText("Ready");
         overlayTimer.setTextColor(0xFFFFFFFF);
-        overlayTimer.setTextSize(13);
+        overlayTimer.setTextSize(12);
         layout.addView(overlayTimer);
+        TextView modeNote = new TextView(this);
+        modeNote.setText("COMPANION MODE  ·  Record, pause and stop with Instagram / YouTube / TikTok. Android does not let an overlay control another app's camera.");
+        modeNote.setTextColor(0xFFCCCCCC);
+        modeNote.setTextSize(11);
+        modeNote.setPadding(2, 4, 2, 8);
+        layout.addView(modeNote);
 
         overlayScroll = new ScrollView(this);
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams((int) (screenW * 0.74f), teleH);
@@ -184,28 +188,23 @@ public class TalkReelService extends Service {
 
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        recButton = UiStyle.primary(this, AppState.isRecording ? "Stop clip" : "Start clip");
+        recButton = UiStyle.primary(this, "Start scroll");
         recButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                // Request only. Do not touch AppState here.
-                sendBroadcast(new Intent(AppState.ACTION_RECORD));
+                overlayScrollRunning = !overlayScrollRunning;
+                refreshOverlayButtons();
             }
         });
         row.addView(recButton);
-        pauseButton = UiStyle.dark(this, AppState.isPaused ? "Resume" : "Pause");
+        pauseButton = UiStyle.dark(this, "Reset text");
         pauseButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                sendBroadcast(new Intent(AppState.ACTION_PAUSE));
+                overlayScrollRunning = false;
+                if (overlayScroll != null) overlayScroll.scrollTo(0, 0);
+                refreshOverlayButtons();
             }
         });
         row.addView(pauseButton);
-        Button stopButton = UiStyle.dark(this, "Stop");
-        stopButton.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                sendBroadcast(new Intent(AppState.ACTION_STOP));
-            }
-        });
-        row.addView(stopButton);
         layout.addView(row);
 
         LinearLayout row2 = new LinearLayout(this);
