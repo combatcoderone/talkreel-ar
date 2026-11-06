@@ -55,6 +55,8 @@ import java.util.Locale;
 // the user taps Overlay. Overlay buttons only send a request,
 // they never change state here.
 public class MainActivity extends Activity {
+    private static final int REQUEST_CAMERA_PERMISSION = 100;
+    private static final int REQUEST_AUDIO_PERMISSION = 101;
     private TextureView textureView;
     private ArCompositor arCompositor;
     private ProFrameView frameView;
@@ -145,19 +147,23 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         SharedPreferences prefs = getSharedPreferences("talkreel", MODE_PRIVATE);
-        AppState.script = prefs.getString("script", AppState.script);
+        String savedScript = prefs.getString("script", AppState.script);
+        if (savedScript != null) AppState.script = savedScript;
         AppState.speed = prefs.getFloat("speed", 1.0f);
-        AppState.langMode = prefs.getInt("langMode", 0);
+        if (Float.isNaN(AppState.speed) || Float.isInfinite(AppState.speed)) AppState.speed = 1.0f;
+        AppState.speed = Math.max(0.25f, Math.min(3.0f, AppState.speed));
+        AppState.langMode = Math.floorMod(prefs.getInt("langMode", 0), AppState.LANG_NAMES.length);
         AppState.showFrame = prefs.getBoolean("showFrame", true);
-        AppState.arFilter = prefs.getInt("arFilter", ProFrameView.FILTER_GUIDE);
+        AppState.arFilter = Math.floorMod(prefs.getInt("arFilter", ProFrameView.FILTER_GUIDE), ProFrameView.FILTER_COUNT);
         AppState.isPro = prefs.getBoolean("isPro", false);
-        AppState.textColorIndex = prefs.getInt("textColor", 0);
-        AppState.captionColorIndex = prefs.getInt("captionColor", 1);
-        musicTrackIndex = prefs.getInt("musicTrack", 0);
-        scriptEditorHeight = prefs.getInt("scriptEditorHeight", 260);
+        AppState.textColorIndex = Math.floorMod(prefs.getInt("textColor", 0), AppState.TEXT_COLORS.length);
+        AppState.captionColorIndex = Math.floorMod(prefs.getInt("captionColor", 1), AppState.TEXT_COLORS.length);
+        musicTrackIndex = Math.floorMod(prefs.getInt("musicTrack", 0), MusicCatalog.TRACKS.length);
+        scriptEditorHeight = Math.max(160, Math.min(520, prefs.getInt("scriptEditorHeight", 260)));
         preferFrontCamera = prefs.getBoolean("faceOn", true);
         useMusic = prefs.getBoolean("useMusic", false);
-        requestPermissions(new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS}, 1);
+        // Runtime permissions are requested after the UI is ready. Camera is requested
+        // for preview; microphone is requested only when the user starts recording.
         cameraThread = new HandlerThread("CameraThread");
         cameraThread.start();
         cameraHandler = new Handler(cameraThread.getLooper());
@@ -553,11 +559,12 @@ public class MainActivity extends Activity {
 
         textureView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
             public void onSurfaceTextureAvailable(SurfaceTexture s, int w, int h) {
-                // v0.6.1: if the camera is already open, restart the
-                // preview on the new surface. openCamera() alone
-                // returns early when cameraDevice != null, so the
-                // preview stayed black after a surface recreate.
-                if (cameraDevice != null) startPreview(); else openCamera();
+                // EGL and Camera2 operations are serialized on CameraThread.
+                if (cameraDevice != null && cameraHandler != null) {
+                    cameraHandler.post(new Runnable() { public void run() { startPreview(); } });
+                } else {
+                    openCamera();
+                }
             }
             public void onSurfaceTextureSizeChanged(SurfaceTexture s, int w, int h) {}
             public boolean onSurfaceTextureDestroyed(SurfaceTexture s) {
@@ -571,39 +578,51 @@ public class MainActivity extends Activity {
             }
             public void onSurfaceTextureUpdated(SurfaceTexture s) {}
         });
+        ensureStartupPermissions();
+    }
+
+    private void ensureStartupPermissions() {
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA_PERMISSION);
+        } else if (textureView != null && textureView.isAvailable()) {
+            openCamera();
+        }
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        // v0.6.1: the camera was tried before the permission dialog
-        // finished, so it failed and never retried, black preview.
-        // Retry once here, after the user answers.
-        boolean cameraOk = false;
-        for (int i = 0; i < permissions.length; i++) {
-            if (Manifest.permission.CAMERA.equals(permissions[i]) && i < grantResults.length && grantResults[i] == PackageManager.PERMISSION_GRANTED) cameraOk = true;
+        boolean granted = grantResults != null && grantResults.length > 0
+            && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+        if (requestCode == REQUEST_CAMERA_PERMISSION) {
+            if (granted) {
+                if (textureView != null && textureView.isAvailable()) openCamera();
+            } else if (statusView != null) {
+                statusView.setText("Camera permission is required for the live preview. Enable it in Android Settings.");
+            }
+            return;
         }
-        if (cameraOk) {
-            mainHandler.postDelayed(new Runnable() { public void run() { openCamera(); } }, 200);
-        } else {
-            statusView.setText("Camera permission is needed. Allow Camera, then reopen the app.");
+        if (requestCode == REQUEST_AUDIO_PERMISSION) {
+            if (granted) {
+                startRecording();
+            } else {
+                Toast.makeText(this, "Microphone permission is required to record audio.", Toast.LENGTH_LONG).show();
+            }
         }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        // v0.6.1: reopen if the camera is missing for any reason,
-        // not only after Instagram or YouTube. That covers the
-        // first launch after the permission dialog, and a surface
-        // recreate. Guarded by cameraOpening, and only once per
-        // resume, so it cannot loop.
-        if (cameraDevice == null && textureView != null && textureView.isAvailable()) {
-            boolean hadReleased = cameraReleasedForSocial;
-            cameraReleasedForSocial = false;
-            mainHandler.postDelayed(new Runnable() {
-                public void run() { openCamera(); }
-            }, hadReleased ? 300 : 100);
+        if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+                && textureView != null && textureView.isAvailable()) {
+            if (cameraDevice == null) {
+                boolean hadReleased = cameraReleasedForSocial;
+                cameraReleasedForSocial = false;
+                mainHandler.postDelayed(new Runnable() { public void run() { openCamera(); } }, hadReleased ? 300 : 100);
+            } else if (arCompositor == null && cameraHandler != null) {
+                cameraHandler.post(new Runnable() { public void run() { startPreview(); } });
+            }
         }
         if (frameView != null) frameView.postInvalidate();
     }
@@ -623,14 +642,28 @@ public class MainActivity extends Activity {
     }
 
     private void releaseCamera() {
-        try {
-            if (captureSession != null) { captureSession.close(); captureSession = null; }
-        } catch (Exception e) {}
-        try {
-            if (cameraDevice != null) { cameraDevice.close(); cameraDevice = null; }
-        } catch (Exception e) {}
-        cameraOpening = false;
         cameraReleasedForSocial = true;
+        if (cameraHandler == null) {
+            try { if (captureSession != null) captureSession.close(); } catch (Exception ignored) {}
+            try { if (cameraDevice != null) cameraDevice.close(); } catch (Exception ignored) {}
+            captureSession = null;
+            cameraDevice = null;
+            cameraOpening = false;
+            return;
+        }
+        cameraHandler.post(new Runnable() {
+            public void run() {
+                try { if (captureSession != null) captureSession.close(); } catch (Exception ignored) {}
+                captureSession = null;
+                if (arCompositor != null) {
+                    try { arCompositor.stop(); } catch (Exception ignored) {}
+                    arCompositor = null;
+                }
+                try { if (cameraDevice != null) cameraDevice.close(); } catch (Exception ignored) {}
+                cameraDevice = null;
+                cameraOpening = false;
+            }
+        });
     }
 
     private void startOverlay() {
@@ -915,26 +948,38 @@ public class MainActivity extends Activity {
     };
 
     private void openCamera() {
-        // Guard: one open at a time. This stops the open/close loop.
         if (cameraOpening || cameraDevice != null) return;
-        if (textureView == null || !textureView.isAvailable()) return;
+        if (cameraHandler == null || textureView == null || !textureView.isAvailable()) return;
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            if (statusView != null) statusView.setText("Allow Camera permission to start the preview.");
+            return;
+        }
         cameraOpening = true;
         cameraHandler.post(new Runnable() {
             public void run() {
-                CameraManager manager = (CameraManager) getSystemService(CAMERA_SERVICE);
                 try {
+                    if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                        cameraOpening = false;
+                        return;
+                    }
+                    CameraManager manager = (CameraManager) getSystemService(CAMERA_SERVICE);
+                    if (manager == null) throw new IllegalStateException("Camera service unavailable");
+                    String[] cameraIds = manager.getCameraIdList();
+                    if (cameraIds == null || cameraIds.length == 0) throw new IllegalStateException("No camera is available on this device");
                     String cameraId = null;
-                    for (String id : manager.getCameraIdList()) {
+                    for (String id : cameraIds) {
                         CameraCharacteristics c = manager.getCameraCharacteristics(id);
                         Integer facing = c.get(CameraCharacteristics.LENS_FACING);
-                        if (facing != null && facing == (preferFrontCamera ? CameraCharacteristics.LENS_FACING_FRONT : CameraCharacteristics.LENS_FACING_BACK)) { cameraId = id; break; }
+                        if (facing != null && facing == (preferFrontCamera ? CameraCharacteristics.LENS_FACING_FRONT : CameraCharacteristics.LENS_FACING_BACK)) {
+                            cameraId = id;
+                            break;
+                        }
                     }
-                    if (cameraId == null) cameraId = manager.getCameraIdList()[0];
+                    if (cameraId == null) cameraId = cameraIds[0];
                     CameraCharacteristics chars = manager.getCameraCharacteristics(cameraId);
                     activeArray = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
                     Integer facing = chars.get(CameraCharacteristics.LENS_FACING);
                     isFrontCamera = facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT;
-                    if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) { cameraOpening = false; return; }
                     manager.openCamera(cameraId, new CameraDevice.StateCallback() {
                         public void onOpened(CameraDevice camera) {
                             cameraOpening = false;
@@ -945,20 +990,27 @@ public class MainActivity extends Activity {
                             cameraOpening = false;
                             camera.close();
                             if (cameraDevice == camera) cameraDevice = null;
+                            if (arCompositor != null) { arCompositor.stop(); arCompositor = null; }
                         }
                         public void onError(CameraDevice camera, int error) {
                             cameraOpening = false;
                             camera.close();
                             if (cameraDevice == camera) cameraDevice = null;
+                            if (arCompositor != null) { arCompositor.stop(); arCompositor = null; }
                             mainHandler.post(new Runnable() {
-                                public void run() { statusView.setText("Camera busy. Close Instagram camera first."); }
+                                public void run() {
+                                    if (statusView != null) statusView.setText("Camera could not start. Close other camera apps and retry.");
+                                }
                             });
                         }
                     }, cameraHandler);
                 } catch (Exception e) {
                     cameraOpening = false;
+                    final String message = e.getMessage();
                     mainHandler.post(new Runnable() {
-                        public void run() { statusView.setText("Camera error"); }
+                        public void run() {
+                            if (statusView != null) statusView.setText("Camera unavailable: " + (message == null ? "check camera permission and close other camera apps" : message));
+                        }
                     });
                 }
             }
@@ -966,8 +1018,13 @@ public class MainActivity extends Activity {
     }
 
     private void startPreview() {
+        if (cameraHandler == null) return;
+        if (Looper.myLooper() != cameraHandler.getLooper()) {
+            cameraHandler.post(new Runnable() { public void run() { startPreview(); } });
+            return;
+        }
         try {
-            if (cameraDevice == null) return;
+            if (cameraDevice == null || textureView == null) return;
             SurfaceTexture tex = textureView.getSurfaceTexture();
             if (tex == null) return;
             if (arCompositor == null) arCompositor = new ArCompositor(cameraHandler);
@@ -976,20 +1033,42 @@ public class MainActivity extends Activity {
             previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             previewBuilder.addTarget(cameraSurface);
             previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
-            if (captureSession != null) captureSession.close();
+            if (captureSession != null) {
+                try { captureSession.close(); } catch (Exception ignored) {}
+                captureSession = null;
+            }
             cameraDevice.createCaptureSession(Arrays.asList(cameraSurface), new CameraCaptureSession.StateCallback() {
                 public void onConfigured(CameraCaptureSession session) {
                     captureSession = session;
-                    try { session.setRepeatingRequest(previewBuilder.build(), faceCallback, cameraHandler); } catch (Exception e) {}
+                    try {
+                        if (cameraDevice != null) session.setRepeatingRequest(previewBuilder.build(), faceCallback, cameraHandler);
+                    } catch (Exception e) {
+                        mainHandler.post(new Runnable() { public void run() {
+                            if (statusView != null) statusView.setText("Camera preview could not start.");
+                        }});
+                    }
                 }
-                public void onConfigureFailed(CameraCaptureSession session) {}
+                public void onConfigureFailed(CameraCaptureSession session) {
+                    mainHandler.post(new Runnable() { public void run() {
+                        if (statusView != null) statusView.setText("Camera preview configuration failed.");
+                    }});
+                }
             }, cameraHandler);
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            final String message = e.getMessage();
+            mainHandler.post(new Runnable() { public void run() {
+                if (statusView != null) statusView.setText("Preview error: " + (message == null ? "camera initialization failed" : message));
+            }});
+        }
     }
 
     private int recordWaitCount = 0;
     private void startRecording() {
         if (AppState.isRecording) return;
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQUEST_AUDIO_PERMISSION);
+            return;
+        }
         // v0.6.1: if the camera is not open yet, wait for it instead
         // of starting MediaRecorder with no camera, which left the
         // app in REC with no video. Retry up to 5 times, 400ms apart.
@@ -1127,15 +1206,25 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        try { unregisterReceiver(controlReceiver); } catch (Exception e) {}
+        try { unregisterReceiver(controlReceiver); } catch (Exception ignored) {}
         mainHandler.removeCallbacks(ticker);
         speechOn = false;
         stopCaptionListening();
         MusicEngine.stop();
-        if (cameraThread != null) {
-            cameraHandler.post(new Runnable() { public void run() { if (arCompositor != null) { arCompositor.stop(); arCompositor = null; } } });
-            cameraThread.quitSafely();
+        if (cameraHandler != null) {
+            cameraHandler.post(new Runnable() {
+                public void run() {
+                    try { if (captureSession != null) captureSession.close(); } catch (Exception ignored) {}
+                    captureSession = null;
+                    if (arCompositor != null) {
+                        try { arCompositor.stop(); } catch (Exception ignored) {}
+                        arCompositor = null;
+                    }
+                    try { if (cameraDevice != null) cameraDevice.close(); } catch (Exception ignored) {}
+                    cameraDevice = null;
+                }
+            });
         }
-        if (cameraDevice != null) cameraDevice.close();
+        if (cameraThread != null) cameraThread.quitSafely();
     }
 }
