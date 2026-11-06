@@ -148,6 +148,7 @@ public class MainActivity extends Activity {
         AppState.speed = prefs.getFloat("speed", 1.0f);
         AppState.langMode = prefs.getInt("langMode", 0);
         AppState.showFrame = prefs.getBoolean("showFrame", true);
+        AppState.arFilter = prefs.getInt("arFilter", ProFrameView.FILTER_GUIDE);
         AppState.isPro = prefs.getBoolean("isPro", false);
         AppState.textColorIndex = prefs.getInt("textColor", 0);
         AppState.captionColorIndex = prefs.getInt("captionColor", 1);
@@ -209,8 +210,15 @@ public class MainActivity extends Activity {
         previewBox.addView(textureView);
         frameView = new ProFrameView(this);
         frameView.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        frameView.setFilter(AppState.arFilter);
         previewBox.addView(frameView);
         root.addView(previewBox);
+        TextView arNote = new TextView(this);
+        arNote.setText("AR face effects are live-preview overlays. Exported video remains on the existing camera recording path.");
+        arNote.setTextColor(0xFFAAAAAA);
+        arNote.setTextSize(11);
+        arNote.setPadding(8, 3, 8, 5);
+        root.addView(arNote);
 
         captionView = new TextView(this);
         captionView.setText("");
@@ -302,6 +310,17 @@ public class MainActivity extends Activity {
             }
         });
         rowPro.addView(faceButton);
+        final Button arFilterButton = UiStyle.dark(this, "AR: " + ProFrameView.filterName(AppState.arFilter));
+        arFilterButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                AppState.arFilter = (AppState.arFilter + 1) % ProFrameView.FILTER_COUNT;
+                frameView.setFilter(AppState.arFilter);
+                arFilterButton.setText("AR: " + ProFrameView.filterName(AppState.arFilter));
+                savePrefs();
+                statusView.setText("AR preview: " + ProFrameView.filterName(AppState.arFilter) + " · Guide turns effects off");
+            }
+        });
+        rowPro.addView(arFilterButton);
         root.addView(rowPro);
 
         LinearLayout row2 = new LinearLayout(this);
@@ -593,7 +612,7 @@ public class MainActivity extends Activity {
 
     private void savePrefs() {
         SharedPreferences prefs = getSharedPreferences("talkreel", MODE_PRIVATE);
-        prefs.edit().putString("script", AppState.script).putFloat("speed", AppState.speed).putInt("langMode", AppState.langMode).putBoolean("showFrame", AppState.showFrame).putBoolean("isPro", AppState.isPro).putInt("textColor", AppState.textColorIndex).putInt("captionColor", AppState.captionColorIndex).putInt("musicTrack", musicTrackIndex).putBoolean("useMusic", useMusic).putInt("scriptEditorHeight", scriptEditorHeight).putBoolean("faceOn", preferFrontCamera).apply();
+        prefs.edit().putString("script", AppState.script).putFloat("speed", AppState.speed).putInt("langMode", AppState.langMode).putBoolean("showFrame", AppState.showFrame).putBoolean("isPro", AppState.isPro).putInt("textColor", AppState.textColorIndex).putInt("captionColor", AppState.captionColorIndex).putInt("musicTrack", musicTrackIndex).putBoolean("useMusic", useMusic).putInt("scriptEditorHeight", scriptEditorHeight).putBoolean("faceOn", preferFrontCamera).putInt("arFilter", AppState.arFilter).apply();
     }
 
     private void releaseCamera() {
