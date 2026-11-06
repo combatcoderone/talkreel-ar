@@ -622,7 +622,7 @@ public class MainActivity extends Activity {
         try {
             startForegroundService(service);
             Toast.makeText(this, "Overlay on. Open Instagram or YouTube.", Toast.LENGTH_LONG).show();
-            statusView.setText("Overlay on");
+            statusView.setText("Overlay Companion on. Use the social app to record; Face mode is controlled there.");
         } catch (Exception e) {
             Toast.makeText(this, "Overlay failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
