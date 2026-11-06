@@ -576,15 +576,25 @@ public class MainActivity extends Activity {
         if (!AppState.isRecording) releaseCamera();
 
         // Prefer the actual installed app. Package visibility is declared in the manifest.
-        try {
-            Intent launch = getPackageManager().getLaunchIntentForPackage(pkg);
-            if (launch != null) {
-                launch.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-                startActivity(launch);
-                statusView.setText("Opened " + appName);
-                return;
-            }
-        } catch (Exception ignored) {}
+        String[] packageCandidates;
+        if ("Instagram".equals(appName)) {
+            packageCandidates = new String[]{pkg, "com.instagram.lite"};
+        } else if ("TikTok".equals(appName)) {
+            packageCandidates = new String[]{pkg, "com.ss.android.ugc.trill"};
+        } else {
+            packageCandidates = new String[]{pkg};
+        }
+        for (String candidate : packageCandidates) {
+            try {
+                Intent launch = getPackageManager().getLaunchIntentForPackage(candidate);
+                if (launch != null) {
+                    launch.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+                    startActivity(launch);
+                    statusView.setText("Opened " + appName);
+                    return;
+                }
+            } catch (Exception ignored) {}
+        }
 
         // Never send users to Google Play. Open the service website instead;
         // Android App Links may still route to an installed app if available.
