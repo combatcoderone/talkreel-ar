@@ -31,11 +31,19 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         "else if(uFilter==4){ c.rgb=min(vec3(1.0),c.rgb*1.18); } " +
         "else if(uFilter==5){ float l=dot(c.rgb,vec3(.299,.587,.114)); c.rgb=mix(c.rgb,vec3(l*.35,l*.9, min(1.0,l*1.5)),.32); } " +
         "else if(uFilter==6){ vec3 soft=(texture2D(sTexture,vTexCoord+vec2(.002,0.)).rgb+texture2D(sTexture,vTexCoord-vec2(.002,0.)).rgb+texture2D(sTexture,vTexCoord+vec2(0.,.002)).rgb+texture2D(sTexture,vTexCoord-vec2(0.,.002)).rgb)*.25; c.rgb=mix(c.rgb,soft,.24); c.rgb=min(vec3(1.0),c.rgb*1.04); } " +
-        "if(uHasFace==1 && uFilter>=2 && uFilter<=5){ vec2 q=vec2(vTexCoord.x,1.0-vTexCoord.y); if(uMirror==1) q.x=1.0-q.x; vec2 sz=uFaceRect.zw-uFaceRect.xy; vec2 ctr=(uFaceRect.xy+uFaceRect.zw)*.5; " +
+        "else if(uFilter==7){ c.rgb=mix(c.rgb,vec3(1.0,.48,.62),.07); } " +
+        "else if(uFilter==8){ c.rgb=mix(c.rgb,vec3(.10,.12,.16),.12); } " +
+        "else if(uFilter==9){ c.rgb=mix(c.rgb,vec3(.72,.45,.22),.08); } " +
+        "else if(uFilter==10){ c.rgb=mix(c.rgb,vec3(.62,.39,.22),.10); } " +
+        "if(uHasFace==1 && uFilter>=2 && uFilter<=10){ vec2 q=vec2(vTexCoord.x,1.0-vTexCoord.y); if(uMirror==1) q.x=1.0-q.x; vec2 sz=uFaceRect.zw-uFaceRect.xy; vec2 ctr=(uFaceRect.xy+uFaceRect.zw)*.5; " +
         "if(uFilter==2){ vec2 e=ctr+vec2(0.,-sz.y*.10); vec2 l=(q-(e+vec2(-sz.x*.23,0.)))/vec2(sz.x*.20,sz.y*.105); vec2 r=(q-(e+vec2(sz.x*.23,0.)))/vec2(sz.x*.20,sz.y*.105); if(dot(l,l)<1.0||dot(r,r)<1.0)c.rgb=mix(c.rgb,vec3(.08,.55,.92),.68); } " +
         "if(uFilter==3){ vec2 l=(q-(ctr+vec2(-sz.x*.27,-sz.y*.64)))/vec2(sz.x*.13,sz.y*.34); vec2 r=(q-(ctr+vec2(sz.x*.27,-sz.y*.64)))/vec2(sz.x*.13,sz.y*.34); if(dot(l,l)<1.0||dot(r,r)<1.0)c.rgb=mix(c.rgb,vec3(1.0,.55,.72),.88); } " +
         "if(uFilter==4 && q.y<ctr.y-sz.y*.56 && q.y>ctr.y-sz.y*1.02 && abs(q.x-ctr.x)<sz.x*.5)c.rgb=mix(c.rgb,vec3(1.0,.72,.08),.95); " +
         "if(uFilter==5){ float edge=min(min(abs(q.x-uFaceRect.x),abs(q.x-uFaceRect.z)),min(abs(q.y-uFaceRect.y),abs(q.y-uFaceRect.w))); if(edge<.009)c.rgb=mix(c.rgb,vec3(.0,.95,1.0),.98); } " +
+        "if(uFilter==7){ vec2 l=(q-(ctr+vec2(-sz.x*.23,sz.y*.18)))/vec2(sz.x*.12,sz.y*.075); vec2 r=(q-(ctr+vec2(sz.x*.23,sz.y*.18)))/vec2(sz.x*.12,sz.y*.075); vec2 lip=(q-(ctr+vec2(0.,sz.y*.32)))/vec2(sz.x*.20,sz.y*.055); if(dot(l,l)<1.0||dot(r,r)<1.0)c.rgb=mix(c.rgb,vec3(1.0,.28,.42),.52); if(dot(lip,lip)<1.0)c.rgb=mix(c.rgb,vec3(.78,.05,.22),.82); } " +
+        "if(uFilter==8 && abs(q.x-ctr.x)<sz.x*.48 && q.y>ctr.y-sz.y*.48 && q.y<ctr.y+sz.y*.48){ c.rgb=mix(c.rgb,vec3(.16,.18,.22),.40); } " +
+        "if(uFilter==9 && q.y<ctr.y-sz.y*.52 && q.y>ctr.y-sz.y*1.0 && abs(q.x-ctr.x)<sz.x*.5){ c.rgb=mix(c.rgb,vec3(.20,.12,.08),.92); } " +
+        "if(uFilter==10 && q.y<ctr.y-sz.y*.28 && q.y>ctr.y-sz.y*.95 && abs(q.x-ctr.x)<sz.x*.62){ c.rgb=mix(c.rgb,vec3(.45,.24,.12),.82); } " +
         "} gl_FragColor=c; }";
 
     private final Handler handler;
