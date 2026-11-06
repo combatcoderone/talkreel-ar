@@ -4,14 +4,14 @@ plugins {
 
 android {
     namespace = "com.talkreel.ar"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.talkreel.ar"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 15
-        versionName = "0.10.0"
+        targetSdk = 36
+        versionCode = 16
+        versionName = "0.11.0"
     }
 
     sourceSets {
