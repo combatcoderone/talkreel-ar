@@ -1,3 +1,4 @@
+// Backend API: validated script scoring and JSON-safe errors.
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
