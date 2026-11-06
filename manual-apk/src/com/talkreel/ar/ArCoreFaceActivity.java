@@ -31,6 +31,7 @@ public final class ArCoreFaceActivity extends Activity {
     private GLSurfaceView surfaceView;
     private ArCoreFaceRenderer renderer;
     private Session session;
+    private TextView trackingStatus;
     private boolean installRequested;
 
     @Override protected void onCreate(Bundle state) {
@@ -40,6 +41,15 @@ public final class ArCoreFaceActivity extends Activity {
         surfaceView = new GLSurfaceView(this);
         surfaceView.setEGLContextClientVersion(2);
         renderer = new ArCoreFaceRenderer();
+        renderer.setStatusListener(new ArCoreFaceRenderer.StatusListener() {
+            @Override public void onTrackingStatus(final String status) {
+                runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        if (trackingStatus != null) trackingStatus.setText(status);
+                    }
+                });
+            }
+        });
         surfaceView.setRenderer(renderer);
         surfaceView.setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
         root.addView(surfaceView, new FrameLayout.LayoutParams(-1, -1));
@@ -57,6 +67,17 @@ public final class ArCoreFaceActivity extends Activity {
         subheading.setPadding(0,4,0,0);
         top.addView(heading); top.addView(subheading);
         root.addView(top,new FrameLayout.LayoutParams(-1,-2,Gravity.TOP));
+
+        trackingStatus = new TextView(this);
+        trackingStatus.setText("Waiting for camera permission");
+        trackingStatus.setTextColor(0xffffffff);
+        trackingStatus.setTextSize(12);
+        trackingStatus.setPadding(16,10,16,10);
+        trackingStatus.setBackgroundColor(0x9908121e);
+        trackingStatus.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams trackingParams = new FrameLayout.LayoutParams(-1,-2,Gravity.TOP);
+        trackingParams.topMargin = 82;
+        root.addView(trackingStatus,trackingParams);
 
         LinearLayout controls = new LinearLayout(this);
         controls.setGravity(Gravity.CENTER);
@@ -121,6 +142,8 @@ public final class ArCoreFaceActivity extends Activity {
                 session.setCameraConfig(configs.get(0));
                 Config config = new Config(session);
                 config.setAugmentedFaceMode(Config.AugmentedFaceMode.MESH3D);
+                config.setFocusMode(Config.FocusMode.AUTO);
+                config.setUpdateMode(Config.UpdateMode.LATEST_CAMERA_IMAGE);
                 session.configure(config);
                 renderer.setSession(session);
             }
