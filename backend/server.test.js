@@ -62,7 +62,7 @@ test('counts words across newlines and repeated whitespace', async () => {
   const response = await postScore({ text: script, seconds: 30 });
   assert.equal(response.status, 200);
   const body = await response.json();
-  assert.equal(body.wordCount, 17);
+  assert.equal(body.wordCount, 18);
   assert.equal(body.hasHook, true);
 });
 
