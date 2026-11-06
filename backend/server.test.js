@@ -57,6 +57,15 @@ test('counts words and recognizes numbered opening hooks', async () => {
   assert.equal(body.estimatedWordsPerSecond, Number((body.wordCount / 30).toFixed(2)));
 });
 
+test('counts words across newlines and repeated whitespace', async () => {
+  const script = 'Wait.\\n  Five useful tips   for creators who want clearer short videos and stronger openings that keep viewers watching.';
+  const response = await postScore({ text: script, seconds: 30 });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.wordCount, 18);
+  assert.equal(body.hasHook, true);
+});
+
 test('rejects missing, blank, and non-string script text', async () => {
   for (const payload of [{}, { text: '   ' }, { text: 42 }]) {
     assert.equal((await postScore(payload)).status, 400);
