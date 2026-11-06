@@ -14,10 +14,10 @@ function readJson(name) {
   return JSON.parse(fs.readFileSync(path.join(__dirname, name), 'utf8'));
 }
 
-const HOOK = /^(stop|wait|this is why|here'?s why|did you know|what if|how to|how i|why you|the truth about|3\\b|5\\b|\\d+\\s)/i;
+const HOOK = /^(stop|wait|this is why|here'?s why|did you know|what if|how to|how i|why you|the truth about|3\b|5\b|\d+\s)/i;
 
 function scoreScript({ text, seconds, captions, sound }) {
-  const words = text.trim().split(/\\s+/).filter(Boolean);
+  const words = text.trim().split(/\s+/).filter(Boolean);
   const count = words.length;
   const hasHook = HOOK.test(text.trim());
   const pace = count / seconds;
