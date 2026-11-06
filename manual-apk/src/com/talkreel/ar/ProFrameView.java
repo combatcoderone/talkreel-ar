@@ -12,8 +12,8 @@ import android.view.View;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Snapchat-inspired face effects drawn on the transparent live-preview layer.
- * The MediaRecorder/camera pipeline is intentionally left unchanged. */
+/** Transparent UI guide layer. Face effects are rendered by ArCompositor so
+ * the same output is used for preview and the encoded MP4. */
 public class ProFrameView extends View {
     public static final int FILTER_GUIDE=0, FILTER_GLOW=1, FILTER_GLASSES=2,
         FILTER_BUNNY=3, FILTER_CROWN=4, FILTER_NEON=5, FILTER_BEAUTY=6, FILTER_MAKEUP=7, FILTER_MASK=8, FILTER_CAT=9, FILTER_DOG=10, FILTER_COUNT=11;
@@ -46,7 +46,7 @@ public class ProFrameView extends View {
             if(AppState.showFrame&&!faces.isEmpty()) box(c,faces.get(0));
             return;
         }
-        for(Rect face:faces) effect(c,face);
+
     }
     private void guides(Canvas c,int w,int h) {
         p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(2); p.setColor(Color.argb(65,255,255,255));
