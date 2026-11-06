@@ -27,7 +27,7 @@ public class MusicEngine {
     private static String playingTitle = null;
 
     public static File musicDir(Context context) {
-        File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "TalkReelAR");
+        File dir = AppStorage.musicDir(context);
         dir.mkdirs();
         return dir;
     }
@@ -103,7 +103,7 @@ public class MusicEngine {
                     while ((n = in.read(buf)) > 0) fos.write(buf, 0, n);
                     fos.close(); in.close(); conn.disconnect();
                     if (out.length() < 10000) throw new Exception("Download too small, try again");
-                    mainHandler.post(new Runnable() { public void run() { cb.onResult(true, "Downloaded: " + track.title + " to Music/TalkReelAR"); } });
+                    mainHandler.post(new Runnable() { public void run() { cb.onResult(true, "Downloaded: " + track.title + " to TalkReel AR storage"); } });
                 } catch (final Exception e) {
                     try { if (out.exists()) out.delete(); } catch (Exception ignored) {}
                     mainHandler.post(new Runnable() { public void run() { cb.onResult(false, "Download failed: " + e.getMessage()); } });
