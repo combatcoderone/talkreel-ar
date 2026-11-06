@@ -2,6 +2,7 @@ package com.talkreel.ar;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -283,14 +284,14 @@ public class MainActivity extends Activity {
 
         LinearLayout rowPro = new LinearLayout(this);
         rowPro.setOrientation(LinearLayout.HORIZONTAL);
-        proButton = UiStyle.primary(this, AppState.isPro ? "Pro: On" : "Pro: Off");
+        proButton = UiStyle.primary(this, AppState.isPro ? "Pro preview: On" : "Pro preview: Off");
         proButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.isPro = !AppState.isPro;
-                proButton.setText(AppState.isPro ? "Pro: On" : "Pro: Off");
+                proButton.setText(AppState.isPro ? "Pro preview: On" : "Pro preview: Off");
                 savePrefs();
                 coachView.setText(ScriptCoach.shortLine(scriptEdit.getText().toString()));
-                statusView.setText(AppState.isPro ? "Pro on  " + AppState.exportLabel() : "Free  " + AppState.exportLabel());
+                statusView.setText(AppState.isPro ? "Pro preview enabled · no payment is processed · " + AppState.exportLabel() : "Free export · " + AppState.exportLabel());
             }
         });
         rowPro.addView(proButton);
@@ -729,16 +730,38 @@ public class MainActivity extends Activity {
     }
 
     private void showClips() {
-        File dir = AppStorage.videoDir(MainActivity.this);
         File[] files = AppStorage.listVideos(MainActivity.this);
         if (files == null || files.length == 0) {
             statusView.setText("No clips yet");
             Toast.makeText(this, "No clips yet. Record one first.", Toast.LENGTH_LONG).show();
             return;
         }
-        StringBuilder sb = new StringBuilder(files.length + " clips:\n");
-        for (File f : files) sb.append("- ").append(f.getName()).append("\n");
-        statusView.setText(sb.toString());
+        java.util.Arrays.sort(files, new java.util.Comparator<File>() {
+            public int compare(File a, File b) { return Long.compare(b.lastModified(), a.lastModified()); }
+        });
+        final File[] clips = files;
+        String[] labels = new String[clips.length];
+        for (int i = 0; i < clips.length; i++) {
+            labels[i] = clips[i].getName() + "  ·  " + android.text.format.Formatter.formatShortFileSize(this, clips[i].length());
+        }
+        new AlertDialog.Builder(this)
+            .setTitle("Your clips  ·  " + clips.length)
+            .setItems(labels, (dialog, which) -> {
+                File selected = clips[which];
+                AppState.lastFile = selected.getAbsolutePath();
+                try {
+                    Uri uri = ClipProvider.uriForFile(selected);
+                    Intent view = new Intent(Intent.ACTION_VIEW);
+                    view.setDataAndType(uri, "video/mp4");
+                    view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivity(Intent.createChooser(view, "Play clip"));
+                    statusView.setText("Opening " + selected.getName());
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this, "No video player available: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                }
+            })
+            .setNegativeButton("Close", null)
+            .show();
     }
 
     private void shareLastClip() {
