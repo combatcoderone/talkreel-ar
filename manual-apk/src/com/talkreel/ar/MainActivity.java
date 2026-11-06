@@ -213,6 +213,12 @@ public class MainActivity extends Activity {
         frameView.setFilter(AppState.arFilter);
         previewBox.addView(frameView);
         root.addView(previewBox);
+        TextView arNote = new TextView(this);
+        arNote.setText("AR face effects are live-preview overlays. Exported video remains on the existing camera recording path.");
+        arNote.setTextColor(0xFFAAAAAA);
+        arNote.setTextSize(11);
+        arNote.setPadding(8, 3, 8, 5);
+        root.addView(arNote);
 
         captionView = new TextView(this);
         captionView.setText("");
@@ -606,7 +612,7 @@ public class MainActivity extends Activity {
 
     private void savePrefs() {
         SharedPreferences prefs = getSharedPreferences("talkreel", MODE_PRIVATE);
-        prefs.edit().putString("script", AppState.script).putFloat("speed", AppState.speed).putInt("langMode", AppState.langMode).putBoolean("showFrame", AppState.showFrame).putBoolean("isPro", AppState.isPro).putInt("textColor", AppState.textColorIndex).putInt("captionColor", AppState.captionColorIndex).putInt("musicTrack", musicTrackIndex).putBoolean("useMusic", useMusic).putInt("scriptEditorHeight", scriptEditorHeight).putBoolean("faceOn", preferFrontCamera).apply();
+        prefs.edit().putString("script", AppState.script).putFloat("speed", AppState.speed).putInt("langMode", AppState.langMode).putBoolean("showFrame", AppState.showFrame).putBoolean("isPro", AppState.isPro).putInt("textColor", AppState.textColorIndex).putInt("captionColor", AppState.captionColorIndex).putInt("musicTrack", musicTrackIndex).putBoolean("useMusic", useMusic).putInt("scriptEditorHeight", scriptEditorHeight).putBoolean("faceOn", preferFrontCamera).putInt("arFilter", AppState.arFilter).apply();
     }
 
     private void releaseCamera() {
