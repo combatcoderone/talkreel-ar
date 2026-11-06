@@ -16,7 +16,7 @@ import java.nio.ShortBuffer;
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
-/** Camera-background and tracked 468-vertex face-mesh renderer. */
+/** ARCore camera background and face-mesh renderer. */
 final class ArCoreFaceRenderer implements GLSurfaceView.Renderer {
     private static final String CV =
         "attribute vec4 aPosition; attribute vec2 aTexCoord; varying vec2 vTexCoord; void main(){gl_Position=aPosition;vTexCoord=aTexCoord;}";
@@ -31,12 +31,14 @@ final class ArCoreFaceRenderer implements GLSurfaceView.Renderer {
     private final FloatBuffer inputUv=floats(new float[]{0,0,1,0,0,1,1,1});
     private final FloatBuffer displayUv=floats(new float[8]);
     private volatile Session session;
+    private volatile int effectStyle=1;
     private boolean textureBound;
     private int cameraTexture, cameraProgram, meshProgram, position, uv, sampler, meshPosition, mvpHandle, colorHandle;
     private int indexCount;
     private ShortBuffer indices;
 
     void setSession(Session s) { session=s; textureBound=false; }
+    void setEffectStyle(int style) { effectStyle=style; }
 
     @Override public void onSurfaceCreated(GL10 gl,EGLConfig config) {
         GLES20.glClearColor(0,0,0,1);
@@ -56,12 +58,16 @@ final class ArCoreFaceRenderer implements GLSurfaceView.Renderer {
         textureBound=false;
     }
 
-    @Override public void onSurfaceChanged(GL10 gl,int width,int height) { GLES20.glViewport(0,0,width,height); }
+    @Override public void onSurfaceChanged(GL10 gl,int width,int height) {
+        GLES20.glViewport(0,0,width,height);
+    }
 
     @Override public void onDrawFrame(GL10 gl) {
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT|GLES20.GL_DEPTH_BUFFER_BIT);
-        Session active=session; if(active==null)return;
+        Session active=session;
+        if(active==null)return;
         try {
+            // A recreated EGL context requires ARCore to receive the new external texture.
             if(!textureBound){active.setCameraTextureName(cameraTexture);textureBound=true;}
             Frame frame=active.update();
             frame.transformDisplayUvCoords(inputUv,displayUv);
@@ -74,12 +80,13 @@ final class ArCoreFaceRenderer implements GLSurfaceView.Renderer {
                 if(face.getTrackingState()==TrackingState.TRACKING)drawFace(face);
             }
         } catch(Exception ignored) {
-            // ARCore may invalidate a frame while Android pauses or recreates the GL surface.
+            // ARCore can invalidate a frame while Android pauses or recreates the GL surface.
         }
     }
 
     private void drawCamera() {
-        GLES20.glDisable(GLES20.GL_DEPTH_TEST); GLES20.glUseProgram(cameraProgram);
+        GLES20.glDisable(GLES20.GL_DEPTH_TEST);
+        GLES20.glUseProgram(cameraProgram);
         quad.position(0); displayUv.position(0);
         GLES20.glEnableVertexAttribArray(position);
         GLES20.glVertexAttribPointer(position,2,GLES20.GL_FLOAT,false,0,quad);
@@ -87,28 +94,50 @@ final class ArCoreFaceRenderer implements GLSurfaceView.Renderer {
         GLES20.glVertexAttribPointer(uv,2,GLES20.GL_FLOAT,false,0,displayUv);
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES,cameraTexture);
-        GLES20.glUniform1i(sampler,0); GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4);
-        GLES20.glDisableVertexAttribArray(position); GLES20.glDisableVertexAttribArray(uv);
+        GLES20.glUniform1i(sampler,0);
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4);
+        GLES20.glDisableVertexAttribArray(position);
+        GLES20.glDisableVertexAttribArray(uv);
     }
 
     private void drawFace(AugmentedFace face) {
-        FloatBuffer vertices=face.getMeshVertices(); ShortBuffer source=face.getMeshTriangleIndices();
+        FloatBuffer vertices=face.getMeshVertices();
+        ShortBuffer source=face.getMeshTriangleIndices();
         if(vertices==null||source==null||vertices.remaining()<3||source.remaining()<3)return;
-        if(indexCount!=source.remaining()) {
+        if(indices==null) {
             indexCount=source.remaining();
             indices=ByteBuffer.allocateDirect(indexCount*2).order(ByteOrder.nativeOrder()).asShortBuffer();
-            ShortBuffer copy=source.duplicate(); copy.position(0); indices.put(copy); indices.position(0);
+            ShortBuffer copy=source.duplicate();
+            copy.position(0);
+            indices.put(copy);
+            indices.position(0);
         }
+        // ARCore mesh vertices are face-local; center pose transforms them into world space.
         face.getCenterPose().toMatrix(model,0);
-        Matrix.multiplyMM(vm,0,view,0,model,0); Matrix.multiplyMM(mvp,0,projection,0,vm,0);
-        GLES20.glEnable(GLES20.GL_DEPTH_TEST); GLES20.glEnable(GLES20.GL_BLEND);
+        Matrix.multiplyMM(vm,0,view,0,model,0);
+        Matrix.multiplyMM(mvp,0,projection,0,vm,0);
+        GLES20.glEnable(GLES20.GL_DEPTH_TEST);
+        GLES20.glEnable(GLES20.GL_BLEND);
         GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA);
-        GLES20.glUseProgram(meshProgram); GLES20.glUniformMatrix4fv(mvpHandle,1,false,mvp,0);
-        GLES20.glUniform4f(colorHandle,0.08f,0.78f,0.94f,0.28f);
-        vertices.position(0); GLES20.glEnableVertexAttribArray(meshPosition);
+        GLES20.glUseProgram(meshProgram);
+        GLES20.glUniformMatrix4fv(mvpHandle,1,false,mvp,0);
+        applyStyle();
+        vertices.position(0);
+        GLES20.glEnableVertexAttribArray(meshPosition);
         GLES20.glVertexAttribPointer(meshPosition,3,GLES20.GL_FLOAT,false,0,vertices);
-        indices.position(0); GLES20.glDrawElements(GLES20.GL_TRIANGLES,indexCount,GLES20.GL_UNSIGNED_SHORT,indices);
-        GLES20.glDisableVertexAttribArray(meshPosition); GLES20.glDisable(GLES20.GL_BLEND); GLES20.glDisable(GLES20.GL_DEPTH_TEST);
+        indices.position(0);
+        GLES20.glDrawElements(GLES20.GL_TRIANGLES,indexCount,GLES20.GL_UNSIGNED_SHORT,indices);
+        GLES20.glDisableVertexAttribArray(meshPosition);
+        GLES20.glDisable(GLES20.GL_BLEND);
+        GLES20.glDisable(GLES20.GL_DEPTH_TEST);
+    }
+
+    private void applyStyle() {
+        switch(effectStyle) {
+            case 0: GLES20.glUniform4f(colorHandle,0.18f,0.82f,0.72f,0.13f); break; // soft contour
+            case 2: GLES20.glUniform4f(colorHandle,0.98f,0.66f,0.32f,0.24f); break; // warm studio
+            default: GLES20.glUniform4f(colorHandle,0.12f,0.70f,1.0f,0.30f); break; // neon
+        }
     }
 
     private static FloatBuffer floats(float[] a) {
@@ -117,13 +146,16 @@ final class ArCoreFaceRenderer implements GLSurfaceView.Renderer {
     }
     private static int link(String vertex,String fragment) {
         int vs=compile(GLES20.GL_VERTEX_SHADER,vertex), fs=compile(GLES20.GL_FRAGMENT_SHADER,fragment);
-        int p=GLES20.glCreateProgram(); GLES20.glAttachShader(p,vs); GLES20.glAttachShader(p,fs); GLES20.glLinkProgram(p);
+        int p=GLES20.glCreateProgram();
+        GLES20.glAttachShader(p,vs); GLES20.glAttachShader(p,fs); GLES20.glLinkProgram(p);
         int[] ok=new int[1]; GLES20.glGetProgramiv(p,GLES20.GL_LINK_STATUS,ok,0);
         if(ok[0]==0){String log=GLES20.glGetProgramInfoLog(p);GLES20.glDeleteProgram(p);throw new IllegalStateException(log);}
-        GLES20.glDeleteShader(vs); GLES20.glDeleteShader(fs); return p;
+        GLES20.glDeleteShader(vs); GLES20.glDeleteShader(fs);
+        return p;
     }
     private static int compile(int type,String source) {
-        int s=GLES20.glCreateShader(type); GLES20.glShaderSource(s,source); GLES20.glCompileShader(s);
+        int s=GLES20.glCreateShader(type);
+        GLES20.glShaderSource(s,source); GLES20.glCompileShader(s);
         int[] ok=new int[1]; GLES20.glGetShaderiv(s,GLES20.GL_COMPILE_STATUS,ok,0);
         if(ok[0]==0){String log=GLES20.glGetShaderInfoLog(s);GLES20.glDeleteShader(s);throw new IllegalStateException(log);}
         return s;
