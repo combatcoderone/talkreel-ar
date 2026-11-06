@@ -92,30 +92,55 @@ public class MusicEngine {
         }
     }
 
+    private static boolean looksLikeMp3(File file) {
+        java.io.FileInputStream in = null;
+        try {
+            in = new java.io.FileInputStream(file);
+            int a = in.read();
+            int b = in.read();
+            int d = in.read();
+            return a == 'I' && b == 'D' && d == '3'
+                || a == 0xFF && b >= 0 && (b & 0xE0) == 0xE0;
+        } catch (Exception e) {
+            return false;
+        } finally {
+            try { if (in != null) in.close(); } catch (Exception ignored) {}
+        }
+    }
+
     // Download a track locally, on a background thread.
     public static void download(final Context context, final MusicCatalog.Track track, final Handler mainHandler, final Callback cb) {
         new Thread(new Runnable() {
             public void run() {
                 File out = localFile(context, track);
+                File temp = new File(out.getParentFile(), out.getName() + ".part");
+                HttpURLConnection conn = null;
                 try {
                     URL url = new URL(track.downloadUrl);
-                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn = (HttpURLConnection) url.openConnection();
                     conn.setConnectTimeout(15000);
                     conn.setReadTimeout(30000);
                     conn.setInstanceFollowRedirects(true);
+                    conn.setRequestProperty("User-Agent", "TalkReelAR/0.11 Android");
                     conn.connect();
-                    if (conn.getResponseCode() >= 400) throw new Exception("HTTP " + conn.getResponseCode());
+                    if (conn.getResponseCode() < 200 || conn.getResponseCode() >= 300) throw new Exception("HTTP " + conn.getResponseCode());
                     InputStream in = conn.getInputStream();
-                    FileOutputStream fos = new FileOutputStream(out);
-                    byte[] buf = new byte[8192];
+                    FileOutputStream fos = new FileOutputStream(temp);
+                    byte[] buf = new byte[16384];
                     int n;
-                    while ((n = in.read(buf)) > 0) fos.write(buf, 0, n);
-                    fos.close(); in.close(); conn.disconnect();
-                    if (out.length() < 10000) throw new Exception("Download too small, try again");
-                    mainHandler.post(new Runnable() { public void run() { cb.onResult(true, "Downloaded: " + track.title + " to Music/TalkReelAR"); } });
+                    while ((n = in.read(buf)) != -1) fos.write(buf, 0, n);
+                    fos.getFD().sync();
+                    fos.close();
+                    in.close();
+                    if (temp.length() < 10000 || !looksLikeMp3(temp)) throw new Exception("The server did not return a valid MP3. Try again later.");
+                    if (out.exists() && !out.delete()) throw new Exception("Could not replace the previous track file.");
+                    if (!temp.renameTo(out)) throw new Exception("Could not save the downloaded track.");
+                    mainHandler.post(new Runnable() { public void run() { cb.onResult(true, "Downloaded: " + track.title + " to TalkReel AR app storage"); } });
                 } catch (final Exception e) {
-                    try { if (out.exists()) out.delete(); } catch (Exception ignored) {}
+                    try { if (temp.exists()) temp.delete(); } catch (Exception ignored) {}
                     mainHandler.post(new Runnable() { public void run() { cb.onResult(false, "Download failed: " + e.getMessage()); } });
+                } finally {
+                    if (conn != null) conn.disconnect();
                 }
             }
         }).start();
