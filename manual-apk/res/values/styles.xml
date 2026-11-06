@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="TalkReelTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:statusBarColor">@android:color/black</item>
+
+        <!-- Never use @null here: some framework builds crash while mutating
+             a null ScrollBarDrawable even when a view hides its scrollbar. -->
+        <item name="android:scrollbarThumbVertical">@android:color/transparent</item>
+        <item name="android:scrollbarTrackVertical">@android:color/transparent</item>
+        <item name="android:scrollbarThumbHorizontal">@android:color/transparent</item>
+        <item name="android:scrollbarTrackHorizontal">@android:color/transparent</item>
+    </style>
+</resources>
