@@ -30,29 +30,34 @@ public class UiStyle {
         b.setTextColor(fg);
         b.setTextSize(15);
         b.setAllCaps(false);
-        b.setPadding(28, 22, 28, 22);
+        b.setMinHeight(dp(c, 44));
+        b.setPadding(dp(c, 14), dp(c, 11), dp(c, 14), dp(c, 11));
         GradientDrawable d = new GradientDrawable();
         d.setColor(bg);
-        d.setCornerRadius(28);
+        d.setCornerRadius(dp(c, 14));
         if (isPrimary) {
             d.setStroke(0, bg);
         } else {
-            d.setStroke(2, 0xFF444444);
+            d.setStroke(dp(c, 1), 0xFF444444);
         }
         b.setBackground(d);
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        p.setMargins(6, 6, 6, 6);
+        p.setMargins(dp(c, 3), dp(c, 3), dp(c, 3), dp(c, 3));
         b.setLayoutParams(p);
         return b;
     }
 
-    public static GradientDrawable panelBg() {
+    private static int dp(Context c, float value) {
+        return Math.round(value * c.getResources().getDisplayMetrics().density);
+    }
+
+    public static GradientDrawable panelBg(Context c) {
         // v0.5: much more transparent by default, text is the important part.
         // 0x59 is about 35 percent black, instead of 0xE6, about 90 percent.
         GradientDrawable d = new GradientDrawable();
         d.setColor(0x59000000);
-        d.setCornerRadius(28);
-        d.setStroke(1, 0x22FFFFFF);
+        d.setCornerRadius(dp(c, 14));
+        d.setStroke(dp(c, 1), 0x22FFFFFF);
         return d;
     }
 }

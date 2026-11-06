@@ -2,11 +2,13 @@
 
 Talk, record, and post. AR teleprompter app for Reels, Shorts, and TikTok.
 
-Version: 0.8.0
+Current development version: 0.11.0 (ARCore feature branch)
 Package: com.talkreel.ar
 Repo: combatcoderone/talkreel-ar
-Min SDK: 26 (Android 8.0), Target SDK: 34 (Android 14)
-App size: about 80 KB, no music or models bundled
+Min SDK: 26 (Android 8.0), Target SDK: 36 (Android 16)
+Build: Gradle Android application module, with source retained in manual-apk/src
+ARCore: com.google.ar:core:1.57.0
+Status: development candidate; not yet device-validated or Play-ready
 
 ## What it is
 
@@ -18,12 +20,11 @@ also stay on top while Instagram or YouTube records.
 
 ## What is shipped
 
-The shipped source is `manual-apk/`, plain Java, no Gradle, no Kotlin.
-That is what produced v0.7.0. See `manual-apk/build.sh`.
-
-`app/` is an older v0.1 Kotlin Compose prototype. It is kept for history
-only, it is NOT the shipped app, and it does not have the v0.2 to v0.7 fixes.
-See `app/LEGACY.md`. Do not build `app/` and expect v0.7.0.
+The maintained Android source is plain Java in `manual-apk/src/`. The
+`:app` Gradle module compiles that source and includes ARCore. The manual build script invokes the same Gradle debug and lint tasks
+and expects JDK 17, Gradle 8.13, and Android SDK 36. Release signing is not
+configured in this development branch. `app/src/` remains a historical Kotlin prototype and is not used
+by the current build.
 
 ## What v0.8.0 changes
 
@@ -276,3 +277,41 @@ is wired in v0.7.0.
 - Existing recording, captions, teleprompter, music, overlay, clips, and sharing paths are retained.
 
 **Current limitation:** these are live preview overlays only. The existing MediaRecorder records the camera stream directly, so the AR artwork is not composited into the saved MP4. Embedding effects in exports requires a separate video-compositing/encoder pipeline; this update deliberately avoids changing that stable path.
+
+## Current 0.11.0 development status
+
+The ARCore branch adds a dedicated front-camera Augmented Faces studio,
+live 468-point face mesh rendering, selectable preview treatments, and live
+tracking guidance. It also improves recording startup validation, asks for
+microphone permission only when the user starts recording, stops/cancels
+recordings safely when the app leaves the foreground, and reports recording
+failures rather than silently claiming that recording started.
+
+Media storage now uses app-specific directories to comply with Android's
+scoped-storage model. On Android 10 and newer, completed clips are also
+published to `Movies/TalkReelAR` through MediaStore. Existing files in the
+legacy public folder remain discoverable when accessible. New music downloads
+are stored in app-specific storage; the former public Music folder is still
+checked for existing tracks. Downloads are staged and validated before they
+replace a saved track.
+
+The Clips control now opens a selectable clip list. The Pro switch is
+explicitly labeled a preview unlock; it is not a payment system.
+
+### Release-blocking limitations
+
+- AR Studio is a live preview only. The current camera/MediaRecorder pipeline
+  does not render ARCore effects into the saved MP4.
+- The face treatments are mesh visualizations, not production face assets
+  such as glasses, makeup, masks, or 3D props.
+- Music is still played through the phone speaker and is not mixed into the
+  recorded audio track.
+- Captions are still live preview plus optional SRT; they are not burned into
+  the exported MP4.
+- Pro purchases, subscription validation, restore purchases, and entitlement
+  checks are not implemented.
+- Device validation is required on the Galaxy S23 FE, including camera
+  orientation, front-camera mirroring, thermal behavior, sustained frame
+  rate, and recording reliability.
+
+See `docs/RELEASE-0.11.0.md` for the acceptance checklist and remaining work.

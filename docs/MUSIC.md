@@ -16,7 +16,7 @@ script editor. Each track has three buttons.
 - Play: test the track first. If it is already downloaded, it plays the local
   file. If it is not downloaded yet, it streams the same download URL, so you
   can hear it before you spend data on a download. Tap Stop to stop it.
-- Download: saves the MP3 locally, in Music/TalkReelAR on the phone, about
+- Download: saves the MP3 locally, in TalkReel AR's app-specific music folder on the phone, about
   2 to 5 MB per track. Nothing is downloaded unless you tap Download.
   Nothing is bundled in the APK, so the app stays small, about 80 KB.
 - Use: picks this track for the next clip. The Music: On button at the top
@@ -26,13 +26,13 @@ script editor. Each track has three buttons.
 In the overlay over Instagram or YouTube, the Music button plays or stops
 the track picked in the Music section.
 
-Honest limit: music plays through the phone speaker while you record, so the
-microphone hears it. It is background music in the room, not mixed into the
-video file by an encoder. Mixing it into the file needs a video encoder
-step, planned after v0.7. If you want clean music in the exported clip, add
+Honest limit (still applies in 0.11.0): music plays through the phone speaker
+while you record, so the microphone hears it. It is background music in the
+room, not mixed into the video file by an encoder. Proper music mixing is
+still release-blocking work. If you want clean music in the exported clip, add
 the downloaded MP3 in CapCut, Instagram Edits, or YouTube Create after you
-export from TalkReel. The downloaded file is already on your phone, in
-Music/TalkReelAR.
+export from TalkReel. The downloaded file is already on your phone, in TalkReel AR's
+app-specific music folder.
 
 ## The tracks, all verified on 2026-11-05
 
@@ -137,3 +137,12 @@ license, credit if any, page URL, download URL, and file name. Check the
 download URL with curl first, and confirm `file` says MP3. Update this file
 with the same track, in the same format. Do not add a track you have not
 downloaded and checked.
+
+
+## Android scoped storage note (0.11.0)
+
+New downloads are written to the app-specific external Music directory, so
+they do not require broad storage access. Existing files in the older public
+`Music/TalkReelAR` folder are still checked for playback. If you uninstall
+TalkReel, Android removes the app-specific downloads; back up any tracks you
+want to keep before uninstalling.
