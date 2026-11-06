@@ -652,28 +652,34 @@ public class MainActivity extends Activity {
         AppState.script = scriptEdit.getText().toString();
         savePrefs();
         if (!AppState.isRecording) releaseCamera();
-        Intent launch = getPackageManager().getLaunchIntentForPackage(pkg);
-        if (launch != null) {
-            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            try {
+        String launchError = null;
+        try {
+            Intent launch = getPackageManager().getLaunchIntentForPackage(pkg);
+            if (launch != null) {
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 startActivity(launch);
                 statusView.setText("Opening " + appName);
                 return;
-            } catch (Exception e) {}
+            }
+        } catch (Exception e) {
+            launchError = e.getClass().getSimpleName() + ": " + e.getMessage();
         }
         try {
             Intent i = new Intent(Intent.ACTION_MAIN);
             i.addCategory(Intent.CATEGORY_LAUNCHER);
             i.setPackage(pkg);
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            if (i.resolveActivity(getPackageManager()) != null) {
-                startActivity(i);
-                statusView.setText("Opening " + appName);
-                return;
-            }
-        } catch (Exception e) {}
-        Toast.makeText(this, appName + " is not installed on this phone.", Toast.LENGTH_LONG).show();
-        statusView.setText(appName + " not installed");
+            startActivity(i);
+            statusView.setText("Opening " + appName);
+            return;
+        } catch (Exception e) {
+            launchError = e.getClass().getSimpleName() + ": " + e.getMessage();
+        }
+        String message = launchError == null
+            ? appName + " has no launchable activity. Check its app version."
+            : "Could not open " + appName + ": " + launchError;
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+        statusView.setText(message);
         if (textureView != null && textureView.isAvailable()) openCamera();
     }
 
