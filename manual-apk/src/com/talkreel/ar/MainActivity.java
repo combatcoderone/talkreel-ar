@@ -1216,7 +1216,8 @@ public class MainActivity extends Activity {
                             if (statusView != null) statusView.setText("Recording could not start: " + detail);
                             Toast.makeText(MainActivity.this, "Recording failed: " + detail, Toast.LENGTH_LONG).show();
                             stopService(new Intent(MainActivity.this, TalkReelService.class));
-                            if (cameraDevice != null && textureView != null && textureView.isAvailable()) startPreview();
+                            if (activityResumed && cameraDevice != null && textureView != null && textureView.isAvailable()) startPreview();
+                            else if (!activityResumed) releaseCamera();
                         }
                     });
                 }
@@ -1273,7 +1274,7 @@ public class MainActivity extends Activity {
                             Toast.makeText(MainActivity.this, "The clip could not be saved. Try recording again.", Toast.LENGTH_LONG).show();
                         }
                         stopService(new Intent(MainActivity.this, TalkReelService.class));
-                        startPreview();
+                        if (activityResumed) startPreview(); else releaseCamera();
                     }
                 });
             }
@@ -1285,6 +1286,7 @@ public class MainActivity extends Activity {
         activityResumed = false;
         if (recordingStarting) failRecording(new IllegalStateException("Recording cancelled because TalkReel left the foreground."));
         else if (AppState.isRecording) stopRecording();
+        else releaseCamera();
         super.onPause();
     }
 
