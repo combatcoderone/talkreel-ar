@@ -252,7 +252,7 @@ public class MainActivity extends Activity {
 
         teleprompterScroll = new SafeScrollView(this);
         teleprompterScroll.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 380));
-        teleprompterScroll.setBackground(UiStyle.panelBg());
+        teleprompterScroll.setBackground(UiStyle.panelBg(this));
         teleprompterScroll.setPadding(16, 16, 16, 16);
         teleprompterScroll.setVerticalScrollBarEnabled(false);
         teleprompterView = new TextView(this);
@@ -514,7 +514,7 @@ public class MainActivity extends Activity {
         // Scrolling remains enabled; only scrollbar rendering is disabled.
         musicScroll.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 320));
         musicScroll.setVerticalScrollBarEnabled(false);
-        musicScroll.setBackground(UiStyle.panelBg());
+        musicScroll.setBackground(UiStyle.panelBg(this));
         musicScroll.addView(musicList);
         root.addView(musicScroll);
         for (int ti = 0; ti < MusicCatalog.TRACKS.length; ti++) {
