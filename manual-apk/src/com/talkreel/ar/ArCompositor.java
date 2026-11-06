@@ -198,7 +198,7 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         void open() {
             display=EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY);
             int[] v=new int[2]; if(display==EGL14.EGL_NO_DISPLAY || !EGL14.eglInitialize(display,v,0,v,1)) throw new RuntimeException("EGL init failed");
-            int[] attrs={EGL14.EGL_RED_SIZE,8,EGL14.EGL_GREEN_SIZE,8,EGL14.EGL_BLUE_SIZE,8,EGL14.EGL_ALPHA_SIZE,8,EGL14.EGL_RENDERABLE_TYPE,EGL14.EGL_OPENGL_ES2_BIT,EGL14.EGL_RECORDABLE_ANDROID,1,EGL14.EGL_NONE};
+            int[] attrs={EGL14.EGL_RED_SIZE,8,EGL14.EGL_GREEN_SIZE,8,EGL14.EGL_BLUE_SIZE,8,EGL14.EGL_ALPHA_SIZE,8,EGL14.EGL_RENDERABLE_TYPE,EGL14.EGL_OPENGL_ES2_BIT,EGLExt.EGL_RECORDABLE_ANDROID,1,EGL14.EGL_NONE};
             android.opengl.EGLConfig[] configs=new android.opengl.EGLConfig[1]; int[] count=new int[1];
             if(!EGL14.eglChooseConfig(display,attrs,0,configs,0,1,count,0) || count[0]==0) throw new RuntimeException("No EGL config");
             config=configs[0];
