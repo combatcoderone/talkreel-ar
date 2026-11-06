@@ -306,6 +306,7 @@ public class TalkReelService extends Service {
     }
 
     private void stopOverlay() {
+        overlayScrollRunning = false;
         handler.removeCallbacks(ticker);
         MusicEngine.stop();
         if (overlayView != null && windowManager != null) {
