@@ -33,7 +33,7 @@ echo "1. Compile resources"
 echo "2. Link APK"
 "$BT/aapt2" link -o unsigned.apk --manifest AndroidManifest.xml -I "$ANDROID_JAR" compiled.zip --auto-add-overlay
 echo "3. Compile Java"
-javac -encoding UTF-8 --release 8 -cp "$ANDROID_JAR" -d classes $(find src -name "*.java")
+javac -encoding UTF-8 --release 8 -cp "$ANDROID_JAR" -d classes $(find src -name "*.java" ! -name "Media3ExportPipeline.java")
 echo "4. Dex"
 jar --create --file app.jar -C classes .
 "$BT/d8" --release --lib "$ANDROID_JAR" --output dex app.jar
