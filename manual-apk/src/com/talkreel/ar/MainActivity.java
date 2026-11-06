@@ -97,6 +97,7 @@ public class MainActivity extends Activity {
     private long windowStartAt = 0;
     private int restartCount = 0;
     private volatile boolean cameraOpening = false;
+    private volatile boolean activityDestroyed = false;
     private volatile boolean cameraReleasedForSocial = false;
     private int quietSeconds = 0;
 
@@ -734,8 +735,13 @@ public class MainActivity extends Activity {
 
     private void showClips() {
         File dir = AppStorage.videoDir(MainActivity.this);
-        File[] files = dir.listFiles();
-        if (files == null || files.length == 0) {
+        File[] allFiles = dir.listFiles();
+        List<File> clips = new ArrayList<File>();
+        if (allFiles != null) {
+            for (File file : allFiles) if (file.isFile() && file.getName().toLowerCase(Locale.US).endsWith(".mp4")) clips.add(file);
+        }
+        File[] files = clips.toArray(new File[clips.size()]);
+        if (files.length == 0) {
             statusView.setText("No clips yet");
             Toast.makeText(this, "No clips yet. Record one first.", Toast.LENGTH_LONG).show();
             return;
@@ -748,8 +754,12 @@ public class MainActivity extends Activity {
     private void shareLastClip() {
         if (AppState.lastFile == null || AppState.lastFile.isEmpty()) {
             File dir = AppStorage.videoDir(MainActivity.this);
-            File[] files = dir.listFiles();
-            if (files != null && files.length > 0) {
+            File[] allFiles = dir.listFiles();
+            List<File> files = new ArrayList<File>();
+            if (allFiles != null) {
+                for (File file : allFiles) if (file.isFile() && file.getName().toLowerCase(Locale.US).endsWith(".mp4")) files.add(file);
+            }
+            if (!files.isEmpty()) {
                 java.util.Arrays.sort(files, new java.util.Comparator<File>() {
                     public int compare(File a, File b) { return Long.compare(b.lastModified(), a.lastModified()); }
                 });
@@ -964,7 +974,7 @@ public class MainActivity extends Activity {
     };
 
     private void openCamera() {
-        if (cameraOpening || cameraDevice != null) return;
+        if (activityDestroyed || cameraOpening || cameraDevice != null) return;
         if (cameraHandler == null || textureView == null || !textureView.isAvailable()) return;
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             if (statusView != null) statusView.setText("Allow Camera permission to start the preview.");
@@ -999,6 +1009,7 @@ public class MainActivity extends Activity {
                     manager.openCamera(cameraId, new CameraDevice.StateCallback() {
                         public void onOpened(CameraDevice camera) {
                             cameraOpening = false;
+                            if (activityDestroyed) { camera.close(); return; }
                             cameraDevice = camera;
                             startPreview();
                         }
@@ -1034,7 +1045,7 @@ public class MainActivity extends Activity {
     }
 
     private void startPreview() {
-        if (cameraHandler == null) return;
+        if (activityDestroyed || cameraHandler == null) return;
         if (Looper.myLooper() != cameraHandler.getLooper()) {
             cameraHandler.post(new Runnable() { public void run() { startPreview(); } });
             return;
@@ -1221,6 +1232,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        activityDestroyed = true;
         super.onDestroy();
         try { unregisterReceiver(controlReceiver); } catch (Exception ignored) {}
         mainHandler.removeCallbacks(ticker);
