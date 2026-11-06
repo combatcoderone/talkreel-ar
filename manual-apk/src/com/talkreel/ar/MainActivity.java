@@ -1,7 +1,6 @@
 package com.talkreel.ar;
 
 import android.Manifest;
-import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
@@ -36,6 +35,7 @@ import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
+import androidx.core.content.ContextCompat;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -56,7 +56,6 @@ import java.util.Locale;
 // Overlay: never shown automatically on Record. Only when
 // the user taps Overlay. Overlay buttons only send a request,
 // they never change state here.
-@SuppressLint("UnspecifiedRegisterReceiverFlag")
 public class MainActivity extends Activity {
     private TextureView textureView;
     private ProFrameView frameView;
@@ -177,11 +176,7 @@ public class MainActivity extends Activity {
         // SecurityException on Android 14, so the app opened and
         // closed at once. This receiver is only for our own overlay,
         // so it must NOT be exported.
-        if (android.os.Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(controlReceiver, f, Context.RECEIVER_NOT_EXPORTED);
-        } else {
-            registerReceiver(controlReceiver, f);
-        }
+        ContextCompat.registerReceiver(this, controlReceiver, f, ContextCompat.RECEIVER_NOT_EXPORTED);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
