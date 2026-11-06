@@ -51,7 +51,7 @@ public class UiStyle {
         return Math.round(value * c.getResources().getDisplayMetrics().density);
     }
 
-    public static GradientDrawable panelBg() {
+    public static GradientDrawable panelBg(Context c) {
         // v0.5: much more transparent by default, text is the important part.
         // 0x59 is about 35 percent black, instead of 0xE6, about 90 percent.
         GradientDrawable d = new GradientDrawable();
