@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.talkreel.ar" android:versionCode="13" android:versionName="0.9.2">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.talkreel.ar" android:versionCode="14" android:versionName="0.9.3">
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
     <queries>
-        <package android:name="com.instagram.android" />
-        <package android:name="com.google.android.youtube" />
-        <package android:name="com.zhiliaoapp.musically" />
-        <package android:name="com.ss.android.ugc.trill" />
+        <!-- Allow discovery of any installed launcher app so social buttons
+             work for installed apps without sending users to an app store. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
     <uses-feature android:name="android.hardware.camera" android:required="true" />
     <uses-permission android:name="android.permission.INTERNET" />
