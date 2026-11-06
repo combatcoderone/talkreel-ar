@@ -898,10 +898,15 @@ public class MainActivity extends Activity {
                         rects.add(mapped);
                     }
                     frameView.setFaces(rects);
+                    if (arCompositor != null && !rects.isEmpty()) {
+                        Rect face = rects.get(0);
+                        arCompositor.setFaceRect(face.left/(float)vw, face.top/(float)vh, face.right/(float)vw, face.bottom/(float)vh, false);
+                    }
                     return;
                 }
             }
             if (frameView != null) frameView.clearFaces();
+            if (arCompositor != null) arCompositor.clearFace();
         }
     };
 
