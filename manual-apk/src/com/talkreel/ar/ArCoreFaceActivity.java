@@ -75,6 +75,7 @@ public final class ArCoreFaceActivity extends Activity {
         trackingStatus.setPadding(16,10,16,10);
         trackingStatus.setBackgroundColor(0x9908121e);
         trackingStatus.setGravity(Gravity.CENTER);
+        trackingStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         FrameLayout.LayoutParams trackingParams = new FrameLayout.LayoutParams(-1,-2,Gravity.TOP);
         trackingParams.topMargin = 82;
         root.addView(trackingStatus,trackingParams);
@@ -91,6 +92,7 @@ public final class ArCoreFaceActivity extends Activity {
             chip.setTextColor(0xffffffff);
             chip.setTextSize(13);
             chip.setGravity(Gravity.CENTER);
+            chip.setContentDescription("Apply " + names[i] + " AR face effect");
             chip.setPadding(18,12,18,12);
             chip.setBackgroundColor(i==1?0xff176b91:0xff263747);
             LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1f);
