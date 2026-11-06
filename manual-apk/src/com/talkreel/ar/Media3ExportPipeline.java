@@ -16,6 +16,8 @@ import android.widget.Toast;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.OverlaySettings;
+import androidx.media3.common.audio.ChannelMixingAudioProcessor;
+import androidx.media3.common.audio.ChannelMixingMatrix;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.effect.OverlayEffect;
 import androidx.media3.effect.StaticOverlaySettings;
@@ -93,8 +95,20 @@ public final class Media3ExportPipeline {
 
             final Composition composition;
             if (music != null && music.isFile() && music.length() > 0) {
+                // Keep music under the microphone track instead of letting it compete
+                // at full scale. Apply a conservative 20% gain for mono/stereo sources.
+                ChannelMixingAudioProcessor musicGain = new ChannelMixingAudioProcessor();
+                for (int channels = 1; channels <= 6; channels++) {
+                    ChannelMixingMatrix matrix = ChannelMixingMatrix.createForConstantPower(
+                            channels, /* outputChannelCount= */ channels);
+                    musicGain.putChannelMixingMatrix(matrix.scaleBy(0.20f));
+                }
+                Effects musicEffects = new Effects(
+                        ImmutableList.of(musicGain), Collections.emptyList());
                 EditedMediaItem background = new EditedMediaItem.Builder(
-                        MediaItem.fromUri(Uri.fromFile(music))).build();
+                        MediaItem.fromUri(Uri.fromFile(music)))
+                        .setEffects(musicEffects)
+                        .build();
                 EditedMediaItemSequence musicSequence =
                         EditedMediaItemSequence.withAudioFrom(ImmutableList.of(background))
                                 .buildUpon().setIsLooping(true).build();
