@@ -23,7 +23,7 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     private static final String FRAGMENT =
         "#extension GL_OES_EGL_image_external : require\n" +
         "precision mediump float; varying vec2 vTexCoord; " +
-        "uniform samplerExternalOES sTexture; uniform int uFilter; " +
+        "uniform samplerExternalOES sTexture; uniform int uFilter; uniform vec4 uFaceRect; uniform int uHasFace; uniform int uMirror; " +
         "void main(){ vec4 c=texture2D(sTexture,vTexCoord); " +
         "if(uFilter==1){ c.rgb=mix(c.rgb,vec3(dot(c.rgb,vec3(.299,.587,.114))),.08); c.rgb=min(vec3(1.0),c.rgb*1.10+vec3(.025)); } " +
         "else if(uFilter==2){ c.rgb=mix(c.rgb,vec3(.12,.24,.34),.12); } " +
@@ -31,7 +31,12 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         "else if(uFilter==4){ c.rgb=min(vec3(1.0),c.rgb*1.18); } " +
         "else if(uFilter==5){ float l=dot(c.rgb,vec3(.299,.587,.114)); c.rgb=mix(c.rgb,vec3(l*.35,l*.9, min(1.0,l*1.5)),.32); } " +
         "else if(uFilter==6){ vec3 soft=(texture2D(sTexture,vTexCoord+vec2(.002,0.)).rgb+texture2D(sTexture,vTexCoord-vec2(.002,0.)).rgb+texture2D(sTexture,vTexCoord+vec2(0.,.002)).rgb+texture2D(sTexture,vTexCoord-vec2(0.,.002)).rgb)*.25; c.rgb=mix(c.rgb,soft,.24); c.rgb=min(vec3(1.0),c.rgb*1.04); } " +
-        "gl_FragColor=c; }";
+        "if(uHasFace==1 && uFilter>=2 && uFilter<=5){ vec2 q=vec2(vTexCoord.x,1.0-vTexCoord.y); if(uMirror==1) q.x=1.0-q.x; vec2 sz=uFaceRect.zw-uFaceRect.xy; vec2 ctr=(uFaceRect.xy+uFaceRect.zw)*.5; " +
+        "if(uFilter==2){ vec2 e=ctr+vec2(0.,-sz.y*.10); vec2 l=(q-(e+vec2(-sz.x*.23,0.)))/vec2(sz.x*.20,sz.y*.105); vec2 r=(q-(e+vec2(sz.x*.23,0.)))/vec2(sz.x*.20,sz.y*.105); if(dot(l,l)<1.0||dot(r,r)<1.0)c.rgb=mix(c.rgb,vec3(.08,.55,.92),.68); } " +
+        "if(uFilter==3){ vec2 l=(q-(ctr+vec2(-sz.x*.27,-sz.y*.64)))/vec2(sz.x*.13,sz.y*.34); vec2 r=(q-(ctr+vec2(sz.x*.27,-sz.y*.64)))/vec2(sz.x*.13,sz.y*.34); if(dot(l,l)<1.0||dot(r,r)<1.0)c.rgb=mix(c.rgb,vec3(1.0,.55,.72),.88); } " +
+        "if(uFilter==4 && q.y<ctr.y-sz.y*.56 && q.y>ctr.y-sz.y*1.02 && abs(q.x-ctr.x)<sz.x*.5)c.rgb=mix(c.rgb,vec3(1.0,.72,.08),.95); " +
+        "if(uFilter==5){ float edge=min(min(abs(q.x-uFaceRect.x),abs(q.x-uFaceRect.z)),min(abs(q.y-uFaceRect.y),abs(q.y-uFaceRect.w))); if(edge<.009)c.rgb=mix(c.rgb,vec3(.0,.95,1.0),.98); } " +
+        "} gl_FragColor=c; }";
 
     private final Handler handler;
     private EGLDisplayHolder egl;
@@ -43,7 +48,9 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     private EGL14Surface encoderEgl;
     private int program, textureId;
     private volatile int filter;
-    private int positionLoc, texCoordLoc, matrixLoc, filterLoc;
+    private int positionLoc, texCoordLoc, matrixLoc, filterLoc, faceRectLoc, hasFaceLoc, mirrorLoc;
+    private volatile float faceLeft, faceTop, faceRight, faceBottom;
+    private volatile boolean hasFace, mirrorFace;
     private final float[] transform = new float[16];
     private boolean released;
 
@@ -69,6 +76,9 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         texCoordLoc=GLES20.glGetAttribLocation(program,"aTexCoord");
         matrixLoc=GLES20.glGetUniformLocation(program,"uTexMatrix");
         filterLoc=GLES20.glGetUniformLocation(program,"uFilter");
+        faceRectLoc=GLES20.glGetUniformLocation(program,"uFaceRect");
+        hasFaceLoc=GLES20.glGetUniformLocation(program,"uHasFace");
+        mirrorLoc=GLES20.glGetUniformLocation(program,"uMirror");
         return cameraInput;
     }
 
@@ -80,6 +90,11 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     }
 
     void setFilter(int value) { filter=value; }
+    void setFaceRect(float left,float top,float right,float bottom,boolean mirrored) {
+        faceLeft=left; faceTop=top; faceRight=right; faceBottom=bottom;
+        mirrorFace=mirrored; hasFace=right>left && bottom>top;
+    }
+    void clearFace() { hasFace=false; }
 
     Surface getCameraInputSurface() { return cameraInput; }
 
@@ -103,6 +118,9 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES,textureId);
         GLES20.glUniform1i(GLES20.glGetUniformLocation(program,"sTexture"),0);
         GLES20.glUniform1i(filterLoc,filter);
+        GLES20.glUniform1i(hasFaceLoc,hasFace?1:0);
+        GLES20.glUniform1i(mirrorLoc,mirrorFace?1:0);
+        GLES20.glUniform4f(faceRectLoc,faceLeft,faceTop,faceRight,faceBottom);
         GLES20.glUniformMatrix4fv(matrixLoc,1,false,transform,0);
         float[] vertices={-1,-1, 1,-1, -1,1, 1,1};
         float[] tex={0,1, 1,1, 0,0, 1,0};
