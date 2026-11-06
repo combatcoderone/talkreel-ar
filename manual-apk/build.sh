@@ -13,6 +13,13 @@ if ! command -v gradle >/dev/null 2>&1; then
   exit 1
 fi
 
+SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+if [ -z "$SDK" ]; then
+  echo "Set ANDROID_HOME or ANDROID_SDK_ROOT to your Android SDK." >&2
+  exit 1
+fi
+BT="$SDK/build-tools/36.0.0"
+
 gradle --no-daemon :app:assembleDebug :app:lintDebug
 APK="$ROOT/app/build/outputs/apk/debug/app-debug.apk"
 
@@ -21,7 +28,7 @@ if [ ! -s "$APK" ]; then
   exit 1
 fi
 
-"$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK"
-"$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+"$BT/aapt" dump badging "$APK"
+"$BT/apksigner" verify --verbose "$APK"
 sha256sum "$APK"
 echo "Debug APK: $APK"
