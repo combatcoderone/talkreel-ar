@@ -39,13 +39,13 @@ public class AppState {
     public static final int[] TEXT_COLORS = {0xFFFFFFFF, 0xFFFFFF00, 0xFF7CFC00, 0xFF00E5FF, 0xFFFF9E2B, 0xFFFF7AB8};
     public static volatile int textColorIndex = 0;
     public static volatile int captionColorIndex = 1;
-    public static String langName() { return LANG_NAMES[langMode % LANG_NAMES.length]; }
-    public static String langCode() { return LANG_CODES[langMode % LANG_CODES.length]; }
+    public static String langName() { return LANG_NAMES[Math.floorMod(langMode, LANG_NAMES.length)]; }
+    public static String langCode() { return LANG_CODES[Math.floorMod(langMode, LANG_CODES.length)]; }
     public static void nextLang() { langMode = (langMode + 1) % LANG_NAMES.length; }
-    public static int textColor() { return TEXT_COLORS[textColorIndex % TEXT_COLORS.length]; }
-    public static String textColorName() { return COLOR_NAMES[textColorIndex % COLOR_NAMES.length]; }
-    public static int captionColor() { return TEXT_COLORS[captionColorIndex % TEXT_COLORS.length]; }
-    public static String captionColorName() { return COLOR_NAMES[captionColorIndex % COLOR_NAMES.length]; }
+    public static int textColor() { return TEXT_COLORS[Math.floorMod(textColorIndex, TEXT_COLORS.length)]; }
+    public static String textColorName() { return COLOR_NAMES[Math.floorMod(textColorIndex, COLOR_NAMES.length)]; }
+    public static int captionColor() { return TEXT_COLORS[Math.floorMod(captionColorIndex, TEXT_COLORS.length)]; }
+    public static String captionColorName() { return COLOR_NAMES[Math.floorMod(captionColorIndex, COLOR_NAMES.length)]; }
     public static void nextTextColor() { textColorIndex = (textColorIndex + 1) % TEXT_COLORS.length; }
     public static void nextCaptionColor() { captionColorIndex = (captionColorIndex + 1) % TEXT_COLORS.length; }
     // Requests from the overlay to MainActivity. MainActivity owns the result.
