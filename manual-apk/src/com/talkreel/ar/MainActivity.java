@@ -728,8 +728,8 @@ public class MainActivity extends Activity {
     }
 
     private void showClips() {
-        File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "TalkReelAR");
-        File[] files = dir.listFiles();
+        File dir = AppStorage.videoDir(MainActivity.this);
+        File[] files = AppStorage.listVideos(MainActivity.this);
         if (files == null || files.length == 0) {
             statusView.setText("No clips yet");
             Toast.makeText(this, "No clips yet. Record one first.", Toast.LENGTH_LONG).show();
@@ -742,8 +742,8 @@ public class MainActivity extends Activity {
 
     private void shareLastClip() {
         if (AppState.lastFile == null || AppState.lastFile.isEmpty()) {
-            File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "TalkReelAR");
-            File[] files = dir.listFiles();
+            File dir = AppStorage.videoDir(MainActivity.this);
+            File[] files = AppStorage.listVideos(MainActivity.this);
             if (files != null && files.length > 0) {
                 java.util.Arrays.sort(files, new java.util.Comparator<File>() {
                     public int compare(File a, File b) { return Long.compare(b.lastModified(), a.lastModified()); }
@@ -1083,7 +1083,7 @@ public class MainActivity extends Activity {
                     mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
                     mediaRecorder.setVideoSize(AppState.exportWidth(), AppState.exportHeight());
                     mediaRecorder.setVideoFrameRate(30);
-                    File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "TalkReelAR");
+                    File dir = AppStorage.videoDir(MainActivity.this);
                     dir.mkdirs();
                     String name = "TalkReel-" + new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.US).format(new Date()) + ".mp4";
                     File out = new File(dir, name);
@@ -1210,7 +1210,8 @@ public class MainActivity extends Activity {
                 SilenceLog.finish(finalSec);
                 File clip = new File(AppState.lastFile);
                 if (stopError != null && clip.exists() && clip.length() < 4096) clip.delete();
-                String extra = "";
+                android.net.Uri galleryUri = stopError == null ? MediaLibrary.publishVideo(getContentResolver(), clip) : null;
+                String extra = galleryUri != null ? " Added to Movies/TalkReelAR." : "";
                 if (AppState.isPro && clip.exists()) {
                     File srt = CaptionStore.write(clip);
                     File cut = SilenceLog.write(clip);
