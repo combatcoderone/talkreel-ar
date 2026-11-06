@@ -571,30 +571,37 @@ public class MainActivity extends Activity {
     private void openSocialApp(String pkg, String appName) {
         AppState.script = scriptEdit.getText().toString();
         savePrefs();
+
+        // Release camera before handing off: social apps need exclusive camera access.
         if (!AppState.isRecording) releaseCamera();
-        Intent launch = getPackageManager().getLaunchIntentForPackage(pkg);
-        if (launch != null) {
-            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            try {
-                startActivity(launch);
-                statusView.setText("Opening " + appName);
-                return;
-            } catch (Exception e) {}
-        }
+
+        // Prefer the actual installed app. Package visibility is declared in the manifest.
         try {
-            Intent i = new Intent(Intent.ACTION_MAIN);
-            i.addCategory(Intent.CATEGORY_LAUNCHER);
-            i.setPackage(pkg);
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            if (i.resolveActivity(getPackageManager()) != null) {
-                startActivity(i);
-                statusView.setText("Opening " + appName);
+            Intent launch = getPackageManager().getLaunchIntentForPackage(pkg);
+            if (launch != null) {
+                launch.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+                startActivity(launch);
+                statusView.setText("Opened " + appName);
                 return;
             }
-        } catch (Exception e) {}
-        Toast.makeText(this, appName + " is not installed on this phone.", Toast.LENGTH_LONG).show();
-        statusView.setText(appName + " not installed");
-        if (textureView != null && textureView.isAvailable()) openCamera();
+        } catch (Exception ignored) {}
+
+        // Never send users to Google Play. Open the service website instead;
+        // Android App Links may still route to an installed app if available.
+        String webUrl;
+        if ("Instagram".equals(appName)) webUrl = "https://www.instagram.com/";
+        else if ("YouTube".equals(appName)) webUrl = "https://www.youtube.com/";
+        else webUrl = "https://www.tiktok.com/";
+        try {
+            Intent web = new Intent(Intent.ACTION_VIEW, Uri.parse(webUrl));
+            web.addCategory(Intent.CATEGORY_BROWSABLE);
+            startActivity(web);
+            statusView.setText(appName + " opened in browser");
+        } catch (Exception e) {
+            Toast.makeText(this, "Could not open " + appName + ": " + e.getMessage(), Toast.LENGTH_LONG).show();
+            statusView.setText("Could not open " + appName);
+            if (textureView != null && textureView.isAvailable()) openCamera();
+        }
     }
 
     private void showClips() {
@@ -874,6 +881,26 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void applyFaceDetection(CaptureRequest.Builder builder) {
+        try {
+            CameraManager manager = (CameraManager) getSystemService(CAMERA_SERVICE);
+            CameraCharacteristics chars = manager.getCameraCharacteristics(cameraDevice.getId());
+            int[] modes = chars.get(CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES);
+            if (modes == null) return;
+            int selected = CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF;
+            for (int mode : modes) {
+                if (mode == CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL) {
+                    selected = mode;
+                    break;
+                }
+                if (mode == CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE) selected = mode;
+            }
+            builder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, selected);
+        } catch (Exception ignored) {
+            // Face detection is an enhancement, never a reason to fail camera preview/recording.
+        }
+    }
+
     private void startPreview() {
         try {
             if (cameraDevice == null) return;
@@ -883,7 +910,7 @@ public class MainActivity extends Activity {
             Surface surface = new Surface(tex);
             previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             previewBuilder.addTarget(surface);
-            previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
+            applyFaceDetection(previewBuilder);
             cameraDevice.createCaptureSession(Arrays.asList(surface), new CameraCaptureSession.StateCallback() {
                 public void onConfigured(CameraCaptureSession session) {
                     captureSession = session;
