@@ -1056,6 +1056,7 @@ public class MainActivity extends Activity {
     private boolean recordingStarting = false;
     private boolean activityResumed = false;
     private void startRecording() {
+        if (!activityResumed) return;
         if (AppState.isRecording || recordingStarting) return;
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 2);
@@ -1237,7 +1238,7 @@ public class MainActivity extends Activity {
                 File clip = new File(AppState.lastFile);
                 if (stopError != null && clip.exists() && clip.length() < 4096) clip.delete();
                 android.net.Uri galleryUri = stopError == null ? MediaLibrary.publishVideo(getContentResolver(), clip) : null;
-                String extra = galleryUri != null ? " Added to Movies/TalkReelAR." : "";
+                String extra = galleryUri != null ? " Also published to Movies/TalkReelAR." : "";
                 if (AppState.isPro && clip.exists()) {
                     File srt = CaptionStore.write(clip);
                     File cut = SilenceLog.write(clip);
@@ -1251,8 +1252,8 @@ public class MainActivity extends Activity {
                         recordButton.setText("Record");
                         pauseButton.setText("Pause");
                         if (clip.exists() && clip.length() > 4096) {
-                            statusView.setText("Saved to Movies/TalkReelAR." + msg);
-                            Toast.makeText(MainActivity.this, "Clip saved. " + clip.getName(), Toast.LENGTH_LONG).show();
+                            statusView.setText((galleryUri != null ? "Saved to Movies/TalkReelAR." : "Saved in TalkReel app storage.") + msg);
+                            Toast.makeText(MainActivity.this, galleryUri != null ? "Clip saved to Movies/TalkReelAR." : "Clip saved in TalkReel. Use Clips to play or share it.", Toast.LENGTH_LONG).show();
                         } else {
                             statusView.setText("Recording was too short or could not be finalized.");
                             Toast.makeText(MainActivity.this, "The clip could not be saved. Try recording again.", Toast.LENGTH_LONG).show();
