@@ -38,7 +38,9 @@ final class ArCoreFaceRenderer implements GLSurfaceView.Renderer {
     private boolean textureBound;
     private int cameraTexture, cameraProgram, meshProgram, position, uv, sampler, meshPosition, mvpHandle, colorHandle;
     private int indexCount;
+    private int lineIndexCount;
     private ShortBuffer indices;
+    private ShortBuffer lineIndices;
 
     void setSession(Session s) { session=s; textureBound=false; }
     void setEffectStyle(int style) { effectStyle=style; }
@@ -129,6 +131,16 @@ final class ArCoreFaceRenderer implements GLSurfaceView.Renderer {
             copy.position(0);
             indices.put(copy);
             indices.position(0);
+            // Precompute triangle edges once; Contour mode uses a true wireframe.
+            lineIndexCount=(indexCount/3)*6;
+            lineIndices=ByteBuffer.allocateDirect(lineIndexCount*2).order(ByteOrder.nativeOrder()).asShortBuffer();
+            ShortBuffer triangles=source.duplicate();
+            triangles.position(0);
+            for(int i=0;i+2<indexCount;i+=3) {
+                short a=triangles.get(i), b=triangles.get(i+1), c=triangles.get(i+2);
+                lineIndices.put(a).put(b).put(b).put(c).put(c).put(a);
+            }
+            lineIndices.position(0);
         }
         // ARCore mesh vertices are face-local; center pose transforms them into world space.
         face.getCenterPose().toMatrix(model,0);
@@ -143,8 +155,14 @@ final class ArCoreFaceRenderer implements GLSurfaceView.Renderer {
         vertices.position(0);
         GLES20.glEnableVertexAttribArray(meshPosition);
         GLES20.glVertexAttribPointer(meshPosition,3,GLES20.GL_FLOAT,false,0,vertices);
-        indices.position(0);
-        GLES20.glDrawElements(GLES20.GL_TRIANGLES,indexCount,GLES20.GL_UNSIGNED_SHORT,indices);
+        if(effectStyle==0) {
+            GLES20.glLineWidth(1.5f);
+            lineIndices.position(0);
+            GLES20.glDrawElements(GLES20.GL_LINES,lineIndexCount,GLES20.GL_UNSIGNED_SHORT,lineIndices);
+        } else {
+            indices.position(0);
+            GLES20.glDrawElements(GLES20.GL_TRIANGLES,indexCount,GLES20.GL_UNSIGNED_SHORT,indices);
+        }
         GLES20.glDisableVertexAttribArray(meshPosition);
         GLES20.glDisable(GLES20.GL_BLEND);
         GLES20.glDisable(GLES20.GL_DEPTH_TEST);
@@ -152,7 +170,7 @@ final class ArCoreFaceRenderer implements GLSurfaceView.Renderer {
 
     private void applyStyle() {
         switch(effectStyle) {
-            case 0: GLES20.glUniform4f(colorHandle,0.18f,0.82f,0.72f,0.13f); break; // soft contour
+            case 0: GLES20.glUniform4f(colorHandle,0.48f,0.96f,0.88f,0.72f); break; // wireframe contour
             case 2: GLES20.glUniform4f(colorHandle,0.98f,0.66f,0.32f,0.24f); break; // warm studio
             default: GLES20.glUniform4f(colorHandle,0.12f,0.70f,1.0f,0.30f); break; // neon
         }
