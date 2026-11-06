@@ -231,7 +231,7 @@ public class MainActivity extends Activity {
         teleprompterScroll.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 380));
         teleprompterScroll.setBackground(UiStyle.panelBg());
         teleprompterScroll.setPadding(16, 16, 16, 16);
-        teleprompterScroll.setVerticalScrollBarEnabled(true);
+        teleprompterScroll.setVerticalScrollBarEnabled(false);
         teleprompterScroll.setScrollbarFadingEnabled(false);
         teleprompterScroll.setScrollBarStyle(View.SCROLLBARS_INSIDE_INSET);
         teleprompterView = new TextView(this);
@@ -477,8 +477,11 @@ public class MainActivity extends Activity {
         LinearLayout musicList = new LinearLayout(this);
         musicList.setOrientation(LinearLayout.VERTICAL);
         ScrollView musicScroll = new ScrollView(this);
+        
+        // Avoid Android framework crashes when the themed scrollbar drawable is null.
+        // Scrolling remains enabled; only scrollbar rendering is disabled.
         musicScroll.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 320));
-        musicScroll.setVerticalScrollBarEnabled(true);
+        musicScroll.setVerticalScrollBarEnabled(false);
         musicScroll.setScrollbarFadingEnabled(false);
         musicScroll.setScrollBarStyle(View.SCROLLBARS_INSIDE_INSET);
         musicScroll.setBackground(UiStyle.panelBg());
@@ -546,6 +549,10 @@ public class MainActivity extends Activity {
         root.addView(musicNote);
 
         ScrollView outer = new ScrollView(this);
+        outer.setVerticalScrollBarEnabled(false);
+        
+        // Avoid Android framework crashes when the themed scrollbar drawable is null.
+        // Scrolling remains enabled; only scrollbar rendering is disabled.
         outer.addView(root);
         setContentView(outer);
 
