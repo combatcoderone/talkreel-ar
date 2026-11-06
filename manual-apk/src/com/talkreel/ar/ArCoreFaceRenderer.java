@@ -32,6 +32,9 @@ final class ArCoreFaceRenderer implements GLSurfaceView.Renderer {
     private final FloatBuffer displayUv=floats(new float[8]);
     private volatile Session session;
     private volatile int effectStyle=1;
+    interface StatusListener { void onTrackingStatus(String status); }
+    private volatile StatusListener statusListener;
+    private String lastStatus = "";
     private boolean textureBound;
     private int cameraTexture, cameraProgram, meshProgram, position, uv, sampler, meshPosition, mvpHandle, colorHandle;
     private int indexCount;
@@ -39,6 +42,13 @@ final class ArCoreFaceRenderer implements GLSurfaceView.Renderer {
 
     void setSession(Session s) { session=s; textureBound=false; }
     void setEffectStyle(int style) { effectStyle=style; }
+    void setStatusListener(StatusListener listener) { statusListener=listener; }
+    private void publishStatus(String status) {
+        if (status.equals(lastStatus)) return;
+        lastStatus=status;
+        StatusListener listener=statusListener;
+        if (listener != null) listener.onTrackingStatus(status);
+    }
 
     @Override public void onSurfaceCreated(GL10 gl,EGLConfig config) {
         GLES20.glClearColor(0,0,0,1);
@@ -65,7 +75,7 @@ final class ArCoreFaceRenderer implements GLSurfaceView.Renderer {
     @Override public void onDrawFrame(GL10 gl) {
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT|GLES20.GL_DEPTH_BUFFER_BIT);
         Session active=session;
-        if(active==null)return;
+        if(active==null){publishStatus("Waiting for ARCore session");return;}
         try {
             // A recreated EGL context requires ARCore to receive the new external texture.
             if(!textureBound){active.setCameraTextureName(cameraTexture);textureBound=true;}
@@ -73,14 +83,22 @@ final class ArCoreFaceRenderer implements GLSurfaceView.Renderer {
             frame.transformDisplayUvCoords(inputUv,displayUv);
             drawCamera();
             Camera camera=frame.getCamera();
-            if(camera.getTrackingState()!=TrackingState.TRACKING)return;
+            if(camera.getTrackingState()!=TrackingState.TRACKING) {
+                publishStatus("Move the phone slowly to initialize tracking");
+                return;
+            }
             camera.getProjectionMatrix(projection,0,0.1f,100f);
             camera.getViewMatrix(view,0);
+            int trackedFaces=0;
             for(AugmentedFace face:active.getAllTrackables(AugmentedFace.class)) {
-                if(face.getTrackingState()==TrackingState.TRACKING)drawFace(face);
+                if(face.getTrackingState()==TrackingState.TRACKING) {
+                    trackedFaces++;
+                    drawFace(face);
+                }
             }
-        } catch(Exception ignored) {
-            // ARCore can invalidate a frame while Android pauses or recreates the GL surface.
+            publishStatus(trackedFaces>0 ? "Face tracked · 468-point mesh active" : "Center your face in the camera view");
+        } catch(Exception error) {
+            publishStatus("AR tracking paused · " + error.getClass().getSimpleName());
         }
     }
 
