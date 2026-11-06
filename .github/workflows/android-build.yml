@@ -34,3 +34,9 @@ jobs:
       - name: Build debug APK
         working-directory: manual-apk
         run: gradle assembleDebug --stacktrace
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: talkreel-ar-debug-apk
+          path: manual-apk/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
