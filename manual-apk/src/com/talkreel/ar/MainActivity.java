@@ -216,7 +216,7 @@ public class MainActivity extends Activity {
         previewBox.addView(frameView);
         root.addView(previewBox);
         TextView arNote = new TextView(this);
-        arNote.setText("AR face effects are live-preview overlays. Exported video remains on the existing camera recording path.");
+        arNote.setText("AR filters are rendered by the GPU into both preview and recorded MP4.");
         arNote.setTextColor(0xFFAAAAAA);
         arNote.setTextSize(11);
         arNote.setPadding(8, 3, 8, 5);
@@ -318,8 +318,9 @@ public class MainActivity extends Activity {
                 AppState.arFilter = (AppState.arFilter + 1) % ProFrameView.FILTER_COUNT;
                 frameView.setFilter(AppState.arFilter);
                 arFilterButton.setText("AR: " + ProFrameView.filterName(AppState.arFilter));
+                if (arCompositor != null) arCompositor.setFilter(AppState.arFilter);
                 savePrefs();
-                statusView.setText("AR preview: " + ProFrameView.filterName(AppState.arFilter) + " · Guide turns effects off");
+                statusView.setText("AR effect: " + ProFrameView.filterName(AppState.arFilter) + " · Applied to preview and recording");
             }
         });
         rowPro.addView(arFilterButton);
