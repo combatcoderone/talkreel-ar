@@ -27,13 +27,17 @@ public final class MediaLibrary {
             if (uri == null) return null;
             OutputStream out = resolver.openOutputStream(uri, "w");
             if (out == null) throw new IllegalStateException("MediaStore output stream unavailable");
-            FileInputStream in = new FileInputStream(source);
-            byte[] buffer = new byte[64 * 1024];
-            int count;
-            while ((count = in.read(buffer)) != -1) out.write(buffer, 0, count);
-            in.close();
-            out.flush();
-            out.close();
+            long copied = 0;
+            try (FileInputStream in = new FileInputStream(source); OutputStream target = out) {
+                byte[] buffer = new byte[64 * 1024];
+                int count;
+                while ((count = in.read(buffer)) != -1) {
+                    target.write(buffer, 0, count);
+                    copied += count;
+                }
+                target.flush();
+            }
+            if (copied != source.length()) throw new IllegalStateException("Gallery copy was incomplete");
             ContentValues ready = new ContentValues();
             ready.put(MediaStore.Video.Media.IS_PENDING, 0);
             resolver.update(uri, ready, null, null);
