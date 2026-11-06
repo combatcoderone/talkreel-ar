@@ -42,13 +42,17 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           packages: platform-tools platforms;android-36 build-tools;36.0.0
-      - name: Build ARCore-enabled APK
-        run: gradle --no-daemon :app:assembleDebug
-      - name: Verify APK package and signature
+      - name: Build and lint ARCore-enabled APK
+        run: gradle --no-daemon :app:assembleDebug :app:lintDebug
+      - name: Verify APK package, target SDK, and signature
         run: |
           APK="app/build/outputs/apk/debug/app-debug.apk"
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK"
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose "$APK"
+          BADGING="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK")"
+          echo "$BADGING"
+          echo "$BADGING" | grep -q "package: name='com.talkreel.ar' versionCode='16' versionName='0.11.0'"
+          echo "$BADGING" | grep -q "targetSdkVersion:'36'"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          test "$(stat -c%s "$APK")" -gt 100000
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
