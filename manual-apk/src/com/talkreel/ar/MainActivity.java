@@ -74,6 +74,7 @@ public class MainActivity extends Activity {
     private Button musicToggleButton;
     private TextView musicStatusView;
     private int scriptEditorHeight = 260;
+    private boolean preferFrontCamera = true;
     private int musicTrackIndex = 0;
     private boolean useMusic = false;
     private CameraDevice cameraDevice;
@@ -152,6 +153,7 @@ public class MainActivity extends Activity {
         AppState.captionColorIndex = prefs.getInt("captionColor", 1);
         musicTrackIndex = prefs.getInt("musicTrack", 0);
         scriptEditorHeight = prefs.getInt("scriptEditorHeight", 260);
+        preferFrontCamera = prefs.getBoolean("faceOn", true);
         useMusic = prefs.getBoolean("useMusic", false);
         requestPermissions(new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS}, 1);
         cameraThread = new HandlerThread("CameraThread");
@@ -284,6 +286,22 @@ public class MainActivity extends Activity {
             }
         });
         rowPro.addView(frameButton);
+        final Button faceButton = UiStyle.dark(this, preferFrontCamera ? "Face: On" : "Face: Off");
+        faceButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                if (AppState.isRecording) {
+                    Toast.makeText(MainActivity.this, "Stop the clip before changing Face mode.", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                preferFrontCamera = !preferFrontCamera;
+                faceButton.setText(preferFrontCamera ? "Face: On" : "Face: Off");
+                savePrefs();
+                releaseCamera();
+                statusView.setText(preferFrontCamera ? "Face mode on: front camera" : "Face mode off: rear camera");
+                mainHandler.postDelayed(new Runnable() { public void run() { openCamera(); } }, 350);
+            }
+        });
+        rowPro.addView(faceButton);
         root.addView(rowPro);
 
         LinearLayout row2 = new LinearLayout(this);
@@ -575,7 +593,7 @@ public class MainActivity extends Activity {
 
     private void savePrefs() {
         SharedPreferences prefs = getSharedPreferences("talkreel", MODE_PRIVATE);
-        prefs.edit().putString("script", AppState.script).putFloat("speed", AppState.speed).putInt("langMode", AppState.langMode).putBoolean("showFrame", AppState.showFrame).putBoolean("isPro", AppState.isPro).putInt("textColor", AppState.textColorIndex).putInt("captionColor", AppState.captionColorIndex).putInt("musicTrack", musicTrackIndex).putBoolean("useMusic", useMusic).putInt("scriptEditorHeight", scriptEditorHeight).apply();
+        prefs.edit().putString("script", AppState.script).putFloat("speed", AppState.speed).putInt("langMode", AppState.langMode).putBoolean("showFrame", AppState.showFrame).putBoolean("isPro", AppState.isPro).putInt("textColor", AppState.textColorIndex).putInt("captionColor", AppState.captionColorIndex).putInt("musicTrack", musicTrackIndex).putBoolean("useMusic", useMusic).putInt("scriptEditorHeight", scriptEditorHeight).putBoolean("faceOn", preferFrontCamera).apply();
     }
 
     private void releaseCamera() {
@@ -878,7 +896,7 @@ public class MainActivity extends Activity {
                     for (String id : manager.getCameraIdList()) {
                         CameraCharacteristics c = manager.getCameraCharacteristics(id);
                         Integer facing = c.get(CameraCharacteristics.LENS_FACING);
-                        if (facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT) { cameraId = id; break; }
+                        if (facing != null && facing == (preferFrontCamera ? CameraCharacteristics.LENS_FACING_FRONT : CameraCharacteristics.LENS_FACING_BACK)) { cameraId = id; break; }
                     }
                     if (cameraId == null) cameraId = manager.getCameraIdList()[0];
                     CameraCharacteristics chars = manager.getCameraCharacteristics(cameraId);
