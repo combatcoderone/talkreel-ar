@@ -106,7 +106,8 @@ public class TalkReelService extends Service {
         }
         if (ACTION_TOGGLE_RECORD.equals(action)) {
             // Request only, MainActivity owns the result.
-            sendBroadcast(new Intent(AppState.ACTION_RECORD));
+            Intent recordIntent = new Intent(AppState.ACTION_RECORD).setPackage(getPackageName());
+            sendBroadcast(recordIntent);
             return START_STICKY;
         }
         if (ACTION_START_OVERLAY.equals(action)) {
