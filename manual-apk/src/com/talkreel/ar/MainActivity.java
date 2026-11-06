@@ -969,12 +969,9 @@ public class MainActivity extends Activity {
                             } catch (Exception e) {}
                         }
                     });
-                    // v0.7.0: if music is on, play the selected track on loop
-                    // while recording. It plays through the speaker, so the
-                    // mic hears it. Stop it in stopRecording().
-                    if (useMusic && musicTrackIndex >= 0 && musicTrackIndex < MusicCatalog.TRACKS.length) {
-                        MusicEngine.play(MainActivity.this, MusicCatalog.TRACKS[musicTrackIndex], true, mainHandler, null);
-                    }
+                    // Selected music is mixed into the finished MP4 during export.
+                    // Do not play it through the speaker while recording: that would
+                    // leak a second copy into the microphone audio track.
                     AppState.isRecording = true;
                     AppState.isPaused = false;
                     AppState.seconds = 0;
@@ -1010,11 +1007,13 @@ public class MainActivity extends Activity {
                 } catch (Exception e) {}
                 CaptionStore.finish(finalSec);
                 SilenceLog.finish(finalSec);
-                File clip = new File(AppState.lastFile);
+                final File clip = new File(AppState.lastFile);
+                final File srt = clip.exists() && CaptionStore.count() > 0 ? CaptionStore.write(clip) : null;
+                final File music = useMusic && musicTrackIndex >= 0 && musicTrackIndex < MusicCatalog.TRACKS.length
+                        ? MusicEngine.localFile(MainActivity.this, MusicCatalog.TRACKS[musicTrackIndex]) : null;
                 String extra = "";
                 if (AppState.isPro && clip.exists()) {
-                    File srt = CaptionStore.write(clip);
-                    File cut = SilenceLog.write(clip);
+                    SilenceLog.write(clip);
                     extra = "  SRT: " + CaptionStore.count() + " lines. Cuts: " + SilenceLog.count() + ".";
                 }
                 AppState.isRecording = false;
@@ -1024,13 +1023,31 @@ public class MainActivity extends Activity {
                     public void run() {
                         recordButton.setText("Record");
                         pauseButton.setText("Pause");
-                        statusView.setText("Saved to Movies/TalkReelAR." + msg);
-                        Toast.makeText(MainActivity.this, "Saved to Movies/TalkReelAR", Toast.LENGTH_LONG).show();
+                        statusView.setText("Recording saved." + msg);
+                        Toast.makeText(MainActivity.this, "Recording saved to Movies/TalkReelAR", Toast.LENGTH_LONG).show();
+                        if ((srt != null || (music != null && music.exists())) && clip.exists()) {
+                            startMedia3Export(clip, music != null && music.exists() ? music : null, srt);
+                        }
                         startPreview();
                     }
                 });
             }
         });
+    }
+
+    // Loaded reflectively so the legacy manual APK still builds without Media3.
+    private void startMedia3Export(File clip, File music, File srt) {
+        try {
+            Class<?> pipeline = Class.forName("com.talkreel.ar.Media3ExportPipeline");
+            java.lang.reflect.Method export = pipeline.getMethod("export", Activity.class, File.class, File.class, File.class);
+            Object started = export.invoke(null, this, clip, music, srt);
+            if (Boolean.FALSE.equals(started)) statusView.setText("Original clip saved. Advanced export could not start.");
+            else statusView.setText("Creating final MP4 with captions and music...");
+        } catch (ClassNotFoundException e) {
+            statusView.setText("Original clip saved. Build with Gradle to enable finished-video export.");
+        } catch (Exception e) {
+            statusView.setText("Original clip saved. Export could not start: " + e.getMessage());
+        }
     }
 
     @Override
