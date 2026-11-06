@@ -155,7 +155,9 @@ public class MainActivity extends Activity {
         scriptEditorHeight = prefs.getInt("scriptEditorHeight", 260);
         preferFrontCamera = prefs.getBoolean("faceOn", true);
         useMusic = prefs.getBoolean("useMusic", false);
-        requestPermissions(new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS}, 1);
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, 1);
+        }
         cameraThread = new HandlerThread("CameraThread");
         cameraThread.start();
         cameraHandler = new Handler(cameraThread.getLooper());
@@ -589,6 +591,16 @@ public class MainActivity extends Activity {
         for (int i = 0; i < permissions.length; i++) {
             if (Manifest.permission.CAMERA.equals(permissions[i]) && i < grantResults.length && grantResults[i] == PackageManager.PERMISSION_GRANTED) cameraOk = true;
         }
+        if (requestCode == 2) {
+            boolean micOk = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            if (micOk) startRecording();
+            else {
+                recordingStarting = false;
+                statusView.setText("Microphone permission denied. Recording needs audio access.");
+                Toast.makeText(this, "Allow microphone access to record video with sound.", Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
         if (cameraOk) {
             mainHandler.postDelayed(new Runnable() { public void run() { openCamera(); } }, 200);
         } else {
@@ -993,20 +1005,29 @@ public class MainActivity extends Activity {
     }
 
     private int recordWaitCount = 0;
+    private boolean recordingStarting = false;
     private void startRecording() {
-        if (AppState.isRecording) return;
+        if (AppState.isRecording || recordingStarting) return;
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 2);
+            statusView.setText("Microphone permission is needed to record.");
+            return;
+        }
+        recordingStarting = true;
         // v0.6.1: if the camera is not open yet, wait for it instead
         // of starting MediaRecorder with no camera, which left the
         // app in REC with no video. Retry up to 5 times, 400ms apart.
         if (cameraDevice == null) {
             openCamera();
             if (recordWaitCount < 5) {
+                recordingStarting = false;
                 recordWaitCount++;
                 statusView.setText("Opening camera...");
                 mainHandler.postDelayed(new Runnable() { public void run() { startRecording(); } }, 400);
                 return;
             }
             recordWaitCount = 0;
+            recordingStarting = false;
             Toast.makeText(this, "Camera is not ready. Close Instagram camera first, then try again.", Toast.LENGTH_LONG).show();
             return;
         }
@@ -1059,39 +1080,79 @@ public class MainActivity extends Activity {
                                 cameraDevice.createCaptureSession(surfaces, new CameraCaptureSession.StateCallback() {
                                     public void onConfigured(CameraCaptureSession session) {
                                         captureSession = session;
-                                        try { session.setRepeatingRequest(previewBuilder.build(), faceCallback, cameraHandler); } catch (Exception e) {}
-                                        try { mediaRecorder.start(); } catch (Exception e) {}
+                                        try {
+                                            session.setRepeatingRequest(previewBuilder.build(), faceCallback, cameraHandler);
+                                            mediaRecorder.start();
+                                            AppState.isRecording = true;
+                                            AppState.isPaused = false;
+                                            AppState.seconds = 0;
+                                            recordingStarting = false;
+                                            windowStartAt = System.currentTimeMillis();
+                                            wordsInWindow = 0;
+                                            mainHandler.post(new Runnable() {
+                                                public void run() {
+                                                    if (useMusic && musicTrackIndex >= 0 && musicTrackIndex < MusicCatalog.TRACKS.length) {
+                                                        MusicEngine.play(MainActivity.this, MusicCatalog.TRACKS[musicTrackIndex], true, mainHandler, null);
+                                                    }
+                                                    recordButton.setText("Stop");
+                                                    pauseButton.setEnabled(true);
+                                                    statusView.setText("REC 0s  " + AppState.exportLabel());
+                                                    mainHandler.post(ticker);
+                                                }
+                                            });
+                                        } catch (final Exception e) {
+                                            failRecording(e);
+                                        }
                                     }
-                                    public void onConfigureFailed(CameraCaptureSession session) {}
+                                    public void onConfigureFailed(CameraCaptureSession session) {
+                                        failRecording(new Exception("The camera could not configure the recording session."));
+                                    }
                                 }, cameraHandler);
-                            } catch (Exception e) {}
-                        }
-                    });
-                    // v0.7.0: if music is on, play the selected track on loop
-                    // while recording. It plays through the speaker, so the
-                    // mic hears it. Stop it in stopRecording().
-                    if (useMusic && musicTrackIndex >= 0 && musicTrackIndex < MusicCatalog.TRACKS.length) {
-                        MusicEngine.play(MainActivity.this, MusicCatalog.TRACKS[musicTrackIndex], true, mainHandler, null);
-                    }
-                    AppState.isRecording = true;
-                    AppState.isPaused = false;
-                    AppState.seconds = 0;
-                    windowStartAt = System.currentTimeMillis();
-                    wordsInWindow = 0;
-                    mainHandler.post(new Runnable() {
-                        public void run() {
-                            recordButton.setText("Stop");
-                            statusView.setText("REC 0s  " + AppState.exportLabel());
-                            mainHandler.post(ticker);
+                            } catch (final Exception e) {
+                                failRecording(e);
+                            }
                         }
                     });
                 } catch (final Exception e) {
-                    mainHandler.post(new Runnable() {
-                        public void run() { Toast.makeText(MainActivity.this, "Record error: " + e.getMessage(), Toast.LENGTH_LONG).show(); }
-                    });
+                    failRecording(e);
                 }
             }
         });
+    }
+
+    private void failRecording(final Exception error) {
+        recordingStarting = false;
+        AppState.isRecording = false;
+        AppState.isPaused = false;
+        MusicEngine.stop();
+        if (cameraHandler != null) {
+            cameraHandler.post(new Runnable() {
+                public void run() {
+                    try { if (captureSession != null) { captureSession.close(); captureSession = null; } } catch (Exception ignored) {}
+                    try {
+                        if (mediaRecorder != null) {
+                            try { mediaRecorder.stop(); } catch (Exception ignored) {}
+                            mediaRecorder.reset();
+                            mediaRecorder.release();
+                            mediaRecorder = null;
+                        }
+                    } catch (Exception ignored) {}
+                    final File failed = AppState.lastFile == null ? null : new File(AppState.lastFile);
+                    if (failed != null && failed.exists() && failed.length() == 0) failed.delete();
+                    mainHandler.post(new Runnable() {
+                        public void run() {
+                            if (recordButton != null) recordButton.setText("Record");
+                            if (pauseButton != null) { pauseButton.setText("Pause"); pauseButton.setEnabled(false); }
+                            String detail = error == null || error.getMessage() == null ? "Unknown camera error" : error.getMessage();
+                            if (statusView != null) statusView.setText("Recording could not start: " + detail);
+                            Toast.makeText(MainActivity.this, "Recording failed: " + detail, Toast.LENGTH_LONG).show();
+                            stopService(new Intent(MainActivity.this, TalkReelService.class));
+                            if (cameraDevice != null && textureView != null && textureView.isAvailable()) startPreview();
+                        }
+                    });
+                }
+            });
+        }
     }
 
     private void stopRecording() {
@@ -1100,15 +1161,22 @@ public class MainActivity extends Activity {
             return;
         }
         MusicEngine.stop();
+        mainHandler.removeCallbacks(ticker);
         final int finalSec = AppState.seconds;
         cameraHandler.post(new Runnable() {
             public void run() {
+                Exception stopError = null;
                 try {
                     if (mediaRecorder != null) { mediaRecorder.stop(); mediaRecorder.reset(); mediaRecorder.release(); mediaRecorder = null; }
-                } catch (Exception e) {}
+                } catch (Exception e) {
+                    stopError = e;
+                    try { if (mediaRecorder != null) mediaRecorder.release(); } catch (Exception ignored) {}
+                    mediaRecorder = null;
+                }
                 CaptionStore.finish(finalSec);
                 SilenceLog.finish(finalSec);
                 File clip = new File(AppState.lastFile);
+                if (stopError != null && clip.exists() && clip.length() < 4096) clip.delete();
                 String extra = "";
                 if (AppState.isPro && clip.exists()) {
                     File srt = CaptionStore.write(clip);
@@ -1122,8 +1190,14 @@ public class MainActivity extends Activity {
                     public void run() {
                         recordButton.setText("Record");
                         pauseButton.setText("Pause");
-                        statusView.setText("Saved to Movies/TalkReelAR." + msg);
-                        Toast.makeText(MainActivity.this, "Saved to Movies/TalkReelAR", Toast.LENGTH_LONG).show();
+                        if (clip.exists() && clip.length() > 4096) {
+                            statusView.setText("Saved to Movies/TalkReelAR." + msg);
+                            Toast.makeText(MainActivity.this, "Clip saved. " + clip.getName(), Toast.LENGTH_LONG).show();
+                        } else {
+                            statusView.setText("Recording was too short or could not be finalized.");
+                            Toast.makeText(MainActivity.this, "The clip could not be saved. Try recording again.", Toast.LENGTH_LONG).show();
+                        }
+                        stopService(new Intent(MainActivity.this, TalkReelService.class));
                         startPreview();
                     }
                 });
