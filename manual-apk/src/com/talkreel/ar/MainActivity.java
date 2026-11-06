@@ -59,7 +59,7 @@ public class MainActivity extends Activity {
     private static final int REQUEST_AUDIO_PERMISSION = 101;
     private static final int REQUEST_OVERLAY_PERMISSION = 102;
     private TextureView textureView;
-    private ArCompositor arCompositor;
+    private volatile ArCompositor arCompositor;
     private ProFrameView frameView;
     private TextView statusView;
     private TextView coachView;
@@ -78,13 +78,13 @@ public class MainActivity extends Activity {
     private Button musicToggleButton;
     private TextView musicStatusView;
     private int scriptEditorHeight = 260;
-    private boolean preferFrontCamera = true;
-    private int musicTrackIndex = 0;
-    private boolean useMusic = false;
-    private CameraDevice cameraDevice;
-    private CameraCaptureSession captureSession;
+    private volatile boolean preferFrontCamera = true;
+    private volatile int musicTrackIndex = 0;
+    private volatile boolean useMusic = false;
+    private volatile CameraDevice cameraDevice;
+    private volatile CameraCaptureSession captureSession;
     private CaptureRequest.Builder previewBuilder;
-    private MediaRecorder mediaRecorder;
+    private volatile MediaRecorder mediaRecorder;
     private HandlerThread cameraThread;
     private Handler cameraHandler;
     private Handler mainHandler = new Handler(Looper.getMainLooper());
