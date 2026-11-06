@@ -150,14 +150,15 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     void stop() {
         checkThread();
         released=true;
+        if(egl!=null && previewEgl!=null) previewEgl.makeCurrent();
+        if(program!=0){ GLES20.glDeleteProgram(program); program=0; }
+        if(textureId!=0){ GLES20.glDeleteTextures(1,new int[]{textureId},0); textureId=0; }
         if(cameraTexture!=null){ cameraTexture.setOnFrameAvailableListener(null); cameraTexture.release(); cameraTexture=null; }
         if(cameraInput!=null){ cameraInput.release(); cameraInput=null; }
         if(encoderEgl!=null){ encoderEgl.release(); encoderEgl=null; }
         encoderSurface=null;
         if(previewEgl!=null){ previewEgl.release(); previewEgl=null; }
         if(previewSurface!=null){ previewSurface.release(); previewSurface=null; }
-        if(program!=0){ GLES20.glDeleteProgram(program); program=0; }
-        if(textureId!=0){ GLES20.glDeleteTextures(1,new int[]{textureId},0); textureId=0; }
         if(egl!=null){ egl.close(); egl=null; }
     }
 
