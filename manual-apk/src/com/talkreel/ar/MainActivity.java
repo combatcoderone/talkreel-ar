@@ -37,7 +37,6 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import java.io.File;
@@ -61,7 +60,7 @@ public class MainActivity extends Activity {
     private TextView coachView;
     private TextView audioView;
     private TextView captionView;
-    private ScrollView teleprompterScroll;
+    private SafeScrollView teleprompterScroll;
     private TextView teleprompterView;
     private EditText scriptEdit;
     private Button recordButton;
@@ -227,13 +226,11 @@ public class MainActivity extends Activity {
         captionView.setPadding(8, 8, 8, 8);
         root.addView(captionView);
 
-        teleprompterScroll = new ScrollView(this);
+        teleprompterScroll = new SafeScrollView(this);
         teleprompterScroll.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 380));
         teleprompterScroll.setBackground(UiStyle.panelBg());
         teleprompterScroll.setPadding(16, 16, 16, 16);
         teleprompterScroll.setVerticalScrollBarEnabled(false);
-        teleprompterScroll.setScrollbarFadingEnabled(false);
-        teleprompterScroll.setScrollBarStyle(View.SCROLLBARS_INSIDE_INSET);
         teleprompterView = new TextView(this);
         teleprompterView.setText(AppState.script);
         teleprompterView.setTextColor(AppState.textColor());
@@ -441,8 +438,6 @@ public class MainActivity extends Activity {
         scriptEdit.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
         // Avoid null themed scrollbar drawable crashes; text editing and scrolling still work.
         scriptEdit.setVerticalScrollBarEnabled(false);
-        scriptEdit.setScrollbarFadingEnabled(false);
-        scriptEdit.setScrollBarStyle(View.SCROLLBARS_INSIDE_INSET);
         scriptEdit.setPadding(16, 16, 16, 16);
         root.addView(scriptEdit);
         LinearLayout editorSizeRow = new LinearLayout(this);
@@ -477,14 +472,12 @@ public class MainActivity extends Activity {
         root.addView(musicStatusView);
         LinearLayout musicList = new LinearLayout(this);
         musicList.setOrientation(LinearLayout.VERTICAL);
-        ScrollView musicScroll = new ScrollView(this);
+        SafeScrollView musicScroll = new SafeScrollView(this);
         
         // Avoid Android framework crashes when the themed scrollbar drawable is null.
         // Scrolling remains enabled; only scrollbar rendering is disabled.
         musicScroll.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 320));
         musicScroll.setVerticalScrollBarEnabled(false);
-        musicScroll.setScrollbarFadingEnabled(false);
-        musicScroll.setScrollBarStyle(View.SCROLLBARS_INSIDE_INSET);
         musicScroll.setBackground(UiStyle.panelBg());
         musicScroll.addView(musicList);
         root.addView(musicScroll);
@@ -549,7 +542,7 @@ public class MainActivity extends Activity {
         musicNote.setPadding(8, 8, 8, 8);
         root.addView(musicNote);
 
-        ScrollView outer = new ScrollView(this);
+        SafeScrollView outer = new SafeScrollView(this);
         outer.setVerticalScrollBarEnabled(false);
         
         // Avoid Android framework crashes when the themed scrollbar drawable is null.
