@@ -155,7 +155,7 @@ public class TalkReelService extends Service {
 
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setBackground(UiStyle.panelBg());
+        layout.setBackground(UiStyle.panelBg(this));
         layout.setPadding(12, 12, 12, 12);
 
         overlayTimer = new TextView(this);
