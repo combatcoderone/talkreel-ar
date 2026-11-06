@@ -31,8 +31,8 @@ while you record, so the microphone hears it. It is background music in the
 room, not mixed into the video file by an encoder. Proper music mixing is
 still release-blocking work. If you want clean music in the exported clip, add
 the downloaded MP3 in CapCut, Instagram Edits, or YouTube Create after you
-export from TalkReel. The downloaded file is already on your phone, in
-Music/TalkReelAR.
+export from TalkReel. The downloaded file is already on your phone, in TalkReel AR's
+app-specific music folder.
 
 ## The tracks, all verified on 2026-11-05
 
