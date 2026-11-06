@@ -133,8 +133,15 @@ public class MusicEngine {
                     fos.close();
                     in.close();
                     if (temp.length() < 10000 || !looksLikeMp3(temp)) throw new Exception("The server did not return a valid MP3. Try again later.");
-                    if (out.exists() && !out.delete()) throw new Exception("Could not replace the previous track file.");
-                    if (!temp.renameTo(out)) throw new Exception("Could not save the downloaded track.");
+                    File backup = new File(out.getParentFile(), out.getName() + ".bak");
+                    if (backup.exists()) backup.delete();
+                    boolean backedUp = out.exists() && out.renameTo(backup);
+                    if (out.exists() && !backedUp) throw new Exception("Could not protect the previous track file.");
+                    if (!temp.renameTo(out)) {
+                        if (backedUp) backup.renameTo(out);
+                        throw new Exception("Could not save the downloaded track.");
+                    }
+                    if (backup.exists()) backup.delete();
                     mainHandler.post(new Runnable() { public void run() { cb.onResult(true, "Downloaded: " + track.title + " to TalkReel AR app storage"); } });
                 } catch (final Exception e) {
                     try { if (temp.exists()) temp.delete(); } catch (Exception ignored) {}
