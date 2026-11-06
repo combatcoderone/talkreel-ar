@@ -6,6 +6,7 @@ on:
       - main
       - feature/presenter-control-ui-v0.8
       - feature/snapchat-style-ar-v0.9
+      - feature/advanced-ar-pipeline-v1.0
   pull_request:
     branches:
       - main
@@ -51,7 +52,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: talkreel-ar-v0.9.0-apk
+          name: talkreel-ar-v1.0.0-apk
           path: manual-apk/app-debug.apk
           if-no-files-found: error
           retention-days: 30
