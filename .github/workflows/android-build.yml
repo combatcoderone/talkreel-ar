@@ -1,15 +1,17 @@
-name: Android build
+name: Android APK build
 
 on:
   push:
     branches:
       - main
-      - feature/media3-export-foundation
+      - feature/presenter-control-ui-v0.8
   pull_request:
     branches:
       - main
     paths:
       - 'manual-apk/**'
+      - '.github/workflows/android-build.yml'
+  workflow_dispatch:
 
 jobs:
   assemble:
@@ -23,20 +25,44 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.13'
-      - name: Set up Android SDK
+      - name: Set up Android SDK 34
         uses: android-actions/setup-android@v3
         with:
-          packages: platform-tools platforms;android-36 build-tools;36.0.0
-      - name: Build debug APK
+          packages: |
+            platform-tools
+            platforms;android-34
+            build-tools;34.0.0
+      - name: Prepare signing key
         working-directory: manual-apk
-        run: gradle assembleDebug --stacktrace
-      - name: Upload debug APK
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.TALKREEL_RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.TALKREEL_KEYSTORE_PASS }}
+        run: |
+          if [ -n "$RELEASE_KEYSTORE_BASE64" ] && [ -n "$RELEASE_KEYSTORE_PASSWORD" ]; then
+            echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > release.keystore
+            echo "Using the configured TalkReel release signing key."
+          else
+            keytool -genkeypair -noprompt -v \
+              -keystore release.keystore \
+              -storepass android -keypass android \
+              -alias talkreel-ci \
+              -dname "CN=TalkReel CI, OU=Build, O=TalkReel, L=Montreal, ST=Quebec, C=CA" \
+              -keyalg RSA -keysize 2048 -validity 10000
+            echo "No release key configured; this is a CI-only debug-signed APK."
+          fi
+      - name: Build and verify APK
+        working-directory: manual-apk
+        env:
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_HOME }}
+          TALKREEL_KEYSTORE_PASS: ${{ secrets.TALKREEL_KEYSTORE_PASS || 'android' }}
+        run: |
+          bash build.sh
+          "$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt2" dump badging app-debug.apk
+          "$ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner" verify --verbose app-debug.apk
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: talkreel-ar-debug-apk
-          path: manual-apk/build/outputs/apk/debug/*.apk
+          name: talkreel-ar-v0.8.0-apk
+          path: manual-apk/app-debug.apk
           if-no-files-found: error
+          retention-days: 30
