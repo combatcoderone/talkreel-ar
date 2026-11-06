@@ -57,6 +57,7 @@ import java.util.Locale;
 public class MainActivity extends Activity {
     private TextureView textureView;
     private ArCompositor arCompositor;
+    private ArCompositor arCompositor;
     private ProFrameView frameView;
     private TextView statusView;
     private TextView coachView;
@@ -1025,31 +1026,28 @@ public class MainActivity extends Activity {
                     mediaRecorder.setOutputFile(out.getAbsolutePath());
                     mediaRecorder.prepare();
                     final Surface recorderSurface = mediaRecorder.getSurface();
-                    mainHandler.post(new Runnable() {
-                        public void run() {
+                    if (cameraDevice == null || arCompositor == null) throw new IllegalStateException("Camera compositor is not ready");
+                    arCompositor.setFilter(AppState.arFilter);
+                    arCompositor.setEncoderSurface(recorderSurface);
+                    final Surface cameraSurface = arCompositor.getCameraInputSurface();
+                    if (captureSession != null) captureSession.close();
+                    previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
+                    previewBuilder.addTarget(cameraSurface);
+                    previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
+                    cameraDevice.createCaptureSession(Arrays.asList(cameraSurface), new CameraCaptureSession.StateCallback() {
+                        public void onConfigured(CameraCaptureSession session) {
+                            captureSession = session;
                             try {
-                                SurfaceTexture tex = textureView.getSurfaceTexture();
-                                if (tex == null || cameraDevice == null) return;
-                                tex.setDefaultBufferSize(AppState.exportWidth(), AppState.exportHeight());
-                                Surface previewSurface = new Surface(tex);
-                                previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
-                                previewBuilder.addTarget(previewSurface);
-                                previewBuilder.addTarget(recorderSurface);
-                                previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
-                                List<Surface> surfaces = new ArrayList<Surface>();
-                                surfaces.add(previewSurface);
-                                surfaces.add(recorderSurface);
-                                cameraDevice.createCaptureSession(surfaces, new CameraCaptureSession.StateCallback() {
-                                    public void onConfigured(CameraCaptureSession session) {
-                                        captureSession = session;
-                                        try { session.setRepeatingRequest(previewBuilder.build(), faceCallback, cameraHandler); } catch (Exception e) {}
-                                        try { mediaRecorder.start(); } catch (Exception e) {}
-                                    }
-                                    public void onConfigureFailed(CameraCaptureSession session) {}
-                                }, cameraHandler);
-                            } catch (Exception e) {}
+                                session.setRepeatingRequest(previewBuilder.build(), faceCallback, cameraHandler);
+                                mediaRecorder.start();
+                            } catch (Exception e) {
+                                mainHandler.post(new Runnable() { public void run() { Toast.makeText(MainActivity.this, "AR recording start failed.", Toast.LENGTH_LONG).show(); } });
+                            }
                         }
-                    });
+                        public void onConfigureFailed(CameraCaptureSession session) {
+                            mainHandler.post(new Runnable() { public void run() { Toast.makeText(MainActivity.this, "Camera session configuration failed.", Toast.LENGTH_LONG).show(); } });
+                        }
+                    }, cameraHandler);
                     // v0.7.0: if music is on, play the selected track on loop
                     // while recording. It plays through the speaker, so the
                     // mic hears it. Stop it in stopRecording().
@@ -1088,6 +1086,7 @@ public class MainActivity extends Activity {
             public void run() {
                 try {
                     if (mediaRecorder != null) { mediaRecorder.stop(); mediaRecorder.reset(); mediaRecorder.release(); mediaRecorder = null; }
+                    if (arCompositor != null) arCompositor.setEncoderSurface(null);
                 } catch (Exception e) {}
                 CaptionStore.finish(finalSec);
                 SilenceLog.finish(finalSec);
@@ -1122,7 +1121,10 @@ public class MainActivity extends Activity {
         speechOn = false;
         stopCaptionListening();
         MusicEngine.stop();
-        if (cameraThread != null) cameraThread.quitSafely();
+        if (cameraThread != null) {
+            cameraHandler.post(new Runnable() { public void run() { if (arCompositor != null) { arCompositor.stop(); arCompositor = null; } } });
+            cameraThread.quitSafely();
+        }
         if (cameraDevice != null) cameraDevice.close();
     }
 }
