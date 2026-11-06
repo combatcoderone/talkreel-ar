@@ -267,3 +267,12 @@ is wired in v0.7.0.
   and the 4-step phone test.
 - docs/TRUST.md: Play Protect, signing key, and why the phone warns.
 - docs/backend-free.md: free backend hosting options.
+
+## v0.9.0 — Snapchat-inspired AR preview effects
+
+- Added selectable live-preview face effects: Guide, Glow, Glasses, Bunny, Crown, and Neon.
+- Effects use the existing Camera2 face-detection rectangles and draw on the transparent preview layer.
+- The selection persists between launches; Guide remains the default and restores the clean framing guide.
+- Existing recording, captions, teleprompter, music, overlay, clips, and sharing paths are retained.
+
+**Current limitation:** these are live preview overlays only. The existing MediaRecorder records the camera stream directly, so the AR artwork is not composited into the saved MP4. Embedding effects in exports requires a separate video-compositing/encoder pipeline; this update deliberately avoids changing that stable path.
