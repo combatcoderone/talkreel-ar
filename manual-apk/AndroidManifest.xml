@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.talkreel.ar" android:versionCode="15" android:versionName="0.10.0">
-    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.talkreel.ar" android:versionCode="16" android:versionName="0.11.0">
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="36" />
     <queries>
         <!-- Allow discovery of any installed launcher app so social buttons
              work for installed apps without sending users to an app store. -->
