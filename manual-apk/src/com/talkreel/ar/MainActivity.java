@@ -285,11 +285,11 @@ public class MainActivity extends Activity {
 
         LinearLayout rowPro = new LinearLayout(this);
         rowPro.setOrientation(LinearLayout.HORIZONTAL);
-        proButton = UiStyle.primary(this, AppState.isPro ? "Pro preview: On" : "Pro preview: Off");
+        proButton = UiStyle.primary(this, AppState.isPro ? "Pro test: On" : "Pro test: Off");
         proButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.isPro = !AppState.isPro;
-                proButton.setText(AppState.isPro ? "Pro preview: On" : "Pro preview: Off");
+                proButton.setText(AppState.isPro ? "Pro test: On" : "Pro test: Off");
                 savePrefs();
                 coachView.setText(ScriptCoach.shortLine(scriptEdit.getText().toString()));
                 statusView.setText(AppState.isPro ? "Pro preview enabled · no payment is processed · " + AppState.exportLabel() : "Free export · " + AppState.exportLabel());
