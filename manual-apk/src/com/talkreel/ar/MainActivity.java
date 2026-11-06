@@ -57,7 +57,6 @@ import java.util.Locale;
 public class MainActivity extends Activity {
     private TextureView textureView;
     private ArCompositor arCompositor;
-    private ArCompositor arCompositor;
     private ProFrameView frameView;
     private TextView statusView;
     private TextView coachView;
