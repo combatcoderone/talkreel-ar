@@ -56,6 +56,7 @@ import java.util.Locale;
 // they never change state here.
 public class MainActivity extends Activity {
     private TextureView textureView;
+    private ArCompositor arCompositor;
     private ProFrameView frameView;
     private TextView statusView;
     private TextView coachView;
@@ -958,12 +959,13 @@ public class MainActivity extends Activity {
             if (cameraDevice == null) return;
             SurfaceTexture tex = textureView.getSurfaceTexture();
             if (tex == null) return;
-            tex.setDefaultBufferSize(720, 1280);
-            Surface surface = new Surface(tex);
+            if (arCompositor == null) arCompositor = new ArCompositor(cameraHandler);
+            Surface cameraSurface = arCompositor.start(tex, 720, 1280);
             previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-            previewBuilder.addTarget(surface);
+            previewBuilder.addTarget(cameraSurface);
             previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
-            cameraDevice.createCaptureSession(Arrays.asList(surface), new CameraCaptureSession.StateCallback() {
+            if (captureSession != null) captureSession.close();
+            cameraDevice.createCaptureSession(Arrays.asList(cameraSurface), new CameraCaptureSession.StateCallback() {
                 public void onConfigured(CameraCaptureSession session) {
                     captureSession = session;
                     try { session.setRepeatingRequest(previewBuilder.build(), faceCallback, cameraHandler); } catch (Exception e) {}
