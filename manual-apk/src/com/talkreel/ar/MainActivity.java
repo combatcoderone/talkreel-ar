@@ -1399,29 +1399,60 @@ public class MainActivity extends Activity {
             return;
         }
         MusicEngine.stop();
+        mainHandler.removeCallbacks(ticker);
         final int finalSec = AppState.seconds;
+        AppState.isRecording = false;
+        AppState.isPaused = false;
         cameraHandler.post(new Runnable() {
             public void run() {
+                File clip = AppState.lastFile == null ? null : new File(AppState.lastFile);
+                boolean finalized = false;
+                String failure = null;
                 try {
-                    if (mediaRecorder != null) { mediaRecorder.stop(); mediaRecorder.reset(); mediaRecorder.release(); mediaRecorder = null; }
-                } catch (Exception e) {}
+                    if (mediaRecorder == null) throw new IllegalStateException("Recorder is unavailable.");
+                    mediaRecorder.stop();
+                    finalized = true;
+                } catch (Exception e) {
+                    failure = e.getMessage() == null ? "The MP4 could not be finalized." : e.getMessage();
+                } finally {
+                    if (mediaRecorder != null) {
+                        try { mediaRecorder.reset(); } catch (Exception ignored) {}
+                        try { mediaRecorder.release(); } catch (Exception ignored) {}
+                        mediaRecorder = null;
+                    }
+                }
+                if (captureSession != null) {
+                    try { captureSession.close(); } catch (Exception ignored) {}
+                    captureSession = null;
+                }
+                if (!finalized || clip == null || !clip.exists() || clip.length() == 0) {
+                    if (clip != null && clip.exists()) clip.delete();
+                    final String detail = failure == null ? "The output file is empty." : failure;
+                    mainHandler.post(new Runnable() {
+                        public void run() {
+                            if (recordButton != null) recordButton.setText("Live · Start recording");
+                            if (pauseButton != null) pauseButton.setText("Pause");
+                            if (statusView != null) statusView.setText("Preview — not recording");
+                            Toast.makeText(MainActivity.this, "Video could not be saved: " + detail + " Please record again.", Toast.LENGTH_LONG).show();
+                            startPreview();
+                        }
+                    });
+                    return;
+                }
                 CaptionStore.finish(finalSec);
                 SilenceLog.finish(finalSec);
-                File clip = new File(AppState.lastFile);
                 String extra = "";
-                if (AppState.isPro && clip.exists()) {
-                    File srt = CaptionStore.write(clip);
-                    File cut = SilenceLog.write(clip);
+                if (AppState.isPro) {
+                    CaptionStore.write(clip);
+                    SilenceLog.write(clip);
                     extra = "  SRT: " + CaptionStore.count() + " lines. Cuts: " + SilenceLog.count() + ".";
                 }
-                AppState.isRecording = false;
-                AppState.isPaused = false;
                 final String msg = extra;
                 mainHandler.post(new Runnable() {
                     public void run() {
-                        recordButton.setText("Live · Start recording");
-                        pauseButton.setText("Pause");
-                        statusView.setText("Saved in TalkReel app storage. Export from Review video." + msg);
+                        if (recordButton != null) recordButton.setText("Live · Start recording");
+                        if (pauseButton != null) pauseButton.setText("Pause");
+                        if (statusView != null) statusView.setText("Saved in TalkReel app storage. Export from Review video." + msg);
                         Toast.makeText(MainActivity.this, "Recording saved. Review it, then export to your phone.", Toast.LENGTH_LONG).show();
                         startPreview();
                         showVideoReview(clip);
