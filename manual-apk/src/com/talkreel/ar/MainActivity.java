@@ -100,6 +100,7 @@ public class MainActivity extends Activity {
     private volatile boolean waitingForCamera = false;
     private boolean waitingToastShown = false;
     private boolean pendingRecordWhenCameraReady = false;
+    private File pendingExportClip;
     private CameraManager cameraManager;
     private CameraManager.AvailabilityCallback cameraAvailabilityCallback;
     private SpeechRecognizer speechRecognizer;
@@ -633,6 +634,13 @@ public class MainActivity extends Activity {
         for (int i = 0; i < permissions.length; i++) {
             if (Manifest.permission.CAMERA.equals(permissions[i]) && i < grantResults.length && grantResults[i] == PackageManager.PERMISSION_GRANTED) cameraOk = true;
         }
+        if (requestCode == 42) {
+            File clip = pendingExportClip;
+            pendingExportClip = null;
+            if (clip != null && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) exportLegacyVideoToPhone(clip);
+            else if (clip != null) Toast.makeText(this, "Storage permission denied. Video was not exported.", Toast.LENGTH_LONG).show();
+            return;
+        }
         if (cameraOk) {
             mainHandler.postDelayed(new Runnable() { public void run() { openCamera(); } }, 200);
         } else {
@@ -761,7 +769,16 @@ public class MainActivity extends Activity {
     }
     private void exportVideoToPhone(File clip) {
         if(clip==null || !clip.exists() || clip.length()==0) return;
-        if(android.os.Build.VERSION.SDK_INT<29) { Toast.makeText(this,"Saved in Movies/TalkReelAR.",Toast.LENGTH_LONG).show(); return; }
+        if(android.os.Build.VERSION.SDK_INT<29) {
+            if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                pendingExportClip = clip;
+                requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 42);
+                Toast.makeText(this, "Allow storage access to export the video.", Toast.LENGTH_LONG).show();
+                return;
+            }
+            exportLegacyVideoToPhone(clip);
+            return;
+        }
         Uri dest=null;
         try {
             ContentValues v=new ContentValues(); v.put(MediaStore.Video.Media.DISPLAY_NAME,clip.getName());
@@ -780,6 +797,27 @@ public class MainActivity extends Activity {
         } catch(Exception e) {
             if(dest!=null) try { getContentResolver().delete(dest,null,null); } catch(Exception ignored) {}
             Toast.makeText(this,"Export failed: "+e.getMessage(),Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void exportLegacyVideoToPhone(File clip) {
+        File movies = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES);
+        File dir = new File(movies, "TalkReelAR");
+        if (!dir.exists() && !dir.mkdirs()) {
+            Toast.makeText(this, "Could not create Movies/TalkReelAR.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        File dest = new File(dir, clip.getName());
+        try {
+            java.io.InputStream in = new java.io.FileInputStream(clip);
+            java.io.OutputStream out = new java.io.FileOutputStream(dest);
+            byte[] buf = new byte[8192]; int n;
+            while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+            in.close(); out.close();
+            android.media.MediaScannerConnection.scanFile(this, new String[]{dest.getAbsolutePath()}, new String[]{"video/mp4"}, null);
+            Toast.makeText(this, "Exported to Movies/TalkReelAR.", Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "Export failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
