@@ -825,7 +825,8 @@ public class MainActivity extends Activity {
     }
 
     private void showClips() {
-        File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "TalkReelAR");
+        File mediaBase = getExternalFilesDir(Environment.DIRECTORY_MOVIES);
+        File dir = new File(mediaBase == null ? getFilesDir() : mediaBase, "TalkReelAR");
         File[] files = dir.listFiles();
         if (files == null || files.length == 0) {
             statusView.setText("No clips yet");
@@ -839,7 +840,8 @@ public class MainActivity extends Activity {
 
     private void shareLastClip() {
         if (AppState.lastFile == null || AppState.lastFile.isEmpty()) {
-            File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "TalkReelAR");
+            File mediaBase = getExternalFilesDir(Environment.DIRECTORY_MOVIES);
+            File dir = new File(mediaBase == null ? getFilesDir() : mediaBase, "TalkReelAR");
             File[] files = dir.listFiles();
             if (files != null && files.length > 0) {
                 java.util.Arrays.sort(files, new java.util.Comparator<File>() {
@@ -1163,8 +1165,9 @@ public class MainActivity extends Activity {
                     mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
                     mediaRecorder.setVideoSize(AppState.exportWidth(), AppState.exportHeight());
                     mediaRecorder.setVideoFrameRate(30);
-                    File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "TalkReelAR");
-                    dir.mkdirs();
+                    File mediaBase = getExternalFilesDir(Environment.DIRECTORY_MOVIES);
+                    File dir = new File(mediaBase == null ? getFilesDir() : mediaBase, "TalkReelAR");
+                    if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("Could not create recording folder.");
                     String name = "TalkReel-" + new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.US).format(new Date()) + ".mp4";
                     File out = new File(dir, name);
                     AppState.lastFile = out.getAbsolutePath();
@@ -1251,8 +1254,8 @@ public class MainActivity extends Activity {
                     public void run() {
                         recordButton.setText("Live · Start recording");
                         pauseButton.setText("Pause");
-                        statusView.setText("Saved to Movies/TalkReelAR." + msg);
-                        Toast.makeText(MainActivity.this, "Saved to Movies/TalkReelAR", Toast.LENGTH_LONG).show();
+                        statusView.setText("Saved in TalkReel app storage. Export from Review video." + msg);
+                        Toast.makeText(MainActivity.this, "Recording saved. Review it, then export to your phone.", Toast.LENGTH_LONG).show();
                         startPreview();
                         showVideoReview(clip);
                     }
