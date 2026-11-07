@@ -1071,16 +1071,19 @@ public class MainActivity extends Activity {
     }
 
     private void togglePause() {
-        if (!AppState.isRecording) return;
-        AppState.isPaused = !AppState.isPaused;
-        pauseButton.setText(AppState.isPaused ? "Resume" : "Pause");
-        if (AppState.isPaused) {
-            if (mediaRecorder != null) { try { mediaRecorder.pause(); } catch (Exception e) {} }
-            statusView.setText("Paused");
-        } else {
-            if (mediaRecorder != null) { try { mediaRecorder.resume(); } catch (Exception e) {} }
-            statusView.setText("Resumed");
-            mainHandler.post(ticker);
+        if (!AppState.isRecording || mediaRecorder == null) return;
+        boolean pause = !AppState.isPaused;
+        try {
+            if (pause) mediaRecorder.pause();
+            else mediaRecorder.resume();
+            AppState.isPaused = pause;
+            pauseButton.setText(pause ? "Resume" : "Pause");
+            statusView.setText(pause ? "Paused" : "Recording resumed");
+            if (pause) mainHandler.removeCallbacks(ticker);
+            else mainHandler.post(ticker);
+        } catch (Exception e) {
+            Toast.makeText(this, "Could not " + (pause ? "pause" : "resume") + " recording: " +
+                    (e.getMessage() == null ? "Recorder error." : e.getMessage()), Toast.LENGTH_LONG).show();
         }
     }
 
