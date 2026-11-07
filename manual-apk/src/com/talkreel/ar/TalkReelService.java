@@ -68,10 +68,10 @@ public class TalkReelService extends Service {
     }
 
     private void startForegroundNotification(int foregroundType) {
-        String channelId = "talkreel_record";
+        String channelId = "talkreel_activity";
         if (Build.VERSION.SDK_INT >= 26) {
-            NotificationChannel channel = new NotificationChannel(channelId, "TalkReel recording", NotificationManager.IMPORTANCE_LOW);
-            channel.setDescription("TalkReel is ready, or recording in the background.");
+            NotificationChannel channel = new NotificationChannel(channelId, "TalkReel activity", NotificationManager.IMPORTANCE_LOW);
+            channel.setDescription("Shows when TalkReel recording or the floating teleprompter is active.");
             NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
             if (nm != null) nm.createNotificationChannel(channel);
         }
@@ -80,8 +80,10 @@ public class TalkReelService extends Service {
         Notification.Builder b;
         if (Build.VERSION.SDK_INT >= 26) b = new Notification.Builder(this, channelId);
         else b = new Notification.Builder(this);
+        boolean recording = (foregroundType & (android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+                | android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)) != 0;
         Notification n = b.setContentTitle("TalkReel AR")
-            .setContentText("Tap to open TalkReel.")
+            .setContentText(recording ? "Recording is active. Tap to return to TalkReel." : "Floating teleprompter is active. Tap to return.")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(pi)
             .build();
