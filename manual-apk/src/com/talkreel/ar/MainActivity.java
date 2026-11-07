@@ -1698,7 +1698,7 @@ public class MainActivity extends Activity {
                         ? MusicEngine.localFile(MainActivity.this, MusicCatalog.TRACKS[musicTrackIndex]) : null;
                 final File captionsForExport;
                 if (AppState.isPro) {
-                    captionsForExport = CaptionStore.write(clip);
+                    captionsForExport = CaptionStore.count() > 0 ? CaptionStore.write(clip) : null;
                     SilenceLog.write(clip);
                     extra = "  SRT: " + CaptionStore.count() + " lines. Cuts: " + SilenceLog.count() + ".";
                 } else {
