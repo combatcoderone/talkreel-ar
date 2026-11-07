@@ -5,7 +5,7 @@ Talk, record, and post. AR teleprompter app for Reels, Shorts, and TikTok.
 Version: 0.9.3 (integration candidate; see docs/PRODUCT-READINESS.md)
 Package: com.talkreel.ar
 Repo: combatcoderone/talkreel-ar
-Min SDK: 26 (Android 8.0), Target SDK: 34 (Android 14)
+Min SDK: 26 (Android 8.0), Target SDK: 36 (Android 16)
 App size: about 80 KB, no music or models bundled
 
 ## What it is
@@ -224,7 +224,7 @@ export TALKREEL_KEYSTORE_PASS=your-keystore-password
 bash build.sh
 ```
 
-It uses aapt2, d8, zipalign, and apksigner from Android SDK 34, with JDK 17. It intentionally excludes the optional Media3 pipeline.
+It uses aapt2, d8, zipalign, and apksigner from Android SDK 36, with JDK 17. It intentionally excludes the optional Media3 pipeline.
 It needs a release keystore at manual-apk/release.keystore. Create your own
 keystore, never commit a keystore or a password to GitHub. The build script
 does NOT auto-generate a keystore, and does NOT contain a password.
@@ -237,8 +237,8 @@ aapt2 dump badging app-debug.apk
 apksigner verify --verbose app-debug.apk
 ```
 
-Expect package com.talkreel.ar, versionCode 9, versionName 0.7.0, minSdk 26,
-targetSdk 34, v2 and v3 true, v1 false, 1 signer.
+Expect package com.talkreel.ar, versionCode 14, versionName 0.9.3, minSdk 26,
+targetSdk 36, v2 and v3 enabled, 1 signer.
 
 Media3-enabled build (required for digital music mixing and burned-in SRT captions):
 
