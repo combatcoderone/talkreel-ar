@@ -16,23 +16,22 @@ script editor. Each track has three buttons.
 - Play: test the track first. If it is already downloaded, it plays the local
   file. If it is not downloaded yet, it streams the same download URL, so you
   can hear it before you spend data on a download. Tap Stop to stop it.
-- Download: saves the MP3 locally, in Music/TalkReelAR on the phone, about
-  2 to 5 MB per track. Nothing is downloaded unless you tap Download.
-  Nothing is bundled in the APK, so the app stays small, about 80 KB.
-- Use: picks this track for the next clip. The Music: On button at the top
-  turns music in a clip on or off. When it is on, the selected track plays
-  on loop while you record, and stops when you tap Stop.
+- Download: saves the MP3 in TalkReel's app-specific external Music/TalkReelAR
+  directory (with internal app storage as a fallback). This avoids direct
+  writes to public shared storage under Android scoped-storage rules. Nothing
+  is bundled in the APK.
+- Use: picks this track for the next clip. In the Media3-enabled Gradle build,
+  the downloaded track is mixed under microphone audio during finished-video
+  export. Studio does not play the track through the speaker while recording.
 
 In the overlay over Instagram or YouTube, the Music button plays or stops
 the track picked in the Music section.
 
-Honest limit: music plays through the phone speaker while you record, so the
-microphone hears it. It is background music in the room, not mixed into the
-video file by an encoder. Mixing it into the file needs a video encoder
-step, planned after v0.7. If you want clean music in the exported clip, add
-the downloaded MP3 in CapCut, Instagram Edits, or YouTube Create after you
-export from TalkReel. The downloaded file is already on your phone, in
-Music/TalkReelAR.
+The Media3-enabled Gradle build mixes the selected local track into a finished
+MP4 after recording. The standalone manual APK build intentionally excludes
+the Media3 dependency and therefore does not provide digital music mixing.
+The original recording is retained if the finished export fails. The selected
+track must be downloaded before Studio recording can start with Music enabled.
 
 ## The tracks, all verified on 2026-11-05
 
