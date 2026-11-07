@@ -167,7 +167,7 @@ public class MainActivity extends Activity {
         floatingPreview = prefs.getBoolean("floatingPreview", false);
         floatingPreviewWidthDp = Math.max(120, Math.min(220, prefs.getInt("floatingPreviewWidthDp", 150)));
         floatingPreviewX = prefs.getFloat("floatingPreviewX", -1f);
-        floatingPreviewY = prefs.getFloat("floatingPreviewY", 88f);
+        floatingPreviewY = prefs.getFloat("floatingPreviewY", dp(88));
         AppState.isPro = prefs.getBoolean("isPro", false);
         AppState.textColorIndex = prefs.getInt("textColor", 0);
         AppState.captionColorIndex = prefs.getInt("captionColor", 1);
@@ -402,22 +402,26 @@ public class MainActivity extends Activity {
             }
         });
         pipRow.addView(floatPreviewButton);
-        Button previewSmaller = UiStyle.dark(this, "Frame −");
-        previewSmaller.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) { resizeFloatingPreview(-20); }
-        });
-        pipRow.addView(previewSmaller);
-        Button previewLarger = UiStyle.dark(this, "Frame +");
-        previewLarger.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) { resizeFloatingPreview(20); }
-        });
-        pipRow.addView(previewLarger);
         Button enterPipButton = UiStyle.primary(this, "System PiP");
         enterPipButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { enterSelfiePip(); }
         });
         pipRow.addView(enterPipButton);
         root.addView(pipRow);
+
+        LinearLayout previewSizeRow = new LinearLayout(this);
+        previewSizeRow.setOrientation(LinearLayout.HORIZONTAL);
+        Button previewSmaller = UiStyle.dark(this, "Selfie size −");
+        previewSmaller.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { resizeFloatingPreview(-20); }
+        });
+        previewSizeRow.addView(previewSmaller);
+        Button previewLarger = UiStyle.dark(this, "Selfie size +");
+        previewLarger.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { resizeFloatingPreview(20); }
+        });
+        previewSizeRow.addView(previewLarger);
+        root.addView(previewSizeRow);
 
         LinearLayout row3 = new LinearLayout(this);
         row3.setOrientation(LinearLayout.HORIZONTAL);
