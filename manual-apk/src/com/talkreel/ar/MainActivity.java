@@ -729,8 +729,13 @@ public class MainActivity extends Activity {
             }
             public void onSurfaceTextureSizeChanged(SurfaceTexture s, int w, int h) {}
             public boolean onSurfaceTextureDestroyed(SurfaceTexture s) {
-                try { if (captureSession != null) { captureSession.close(); captureSession = null; } } catch (Exception e) {}
-                try { if (previewSurface != null) { previewSurface.release(); previewSurface = null; } } catch (Exception e) {}
+                if (cameraHandler != null) cameraHandler.post(new Runnable() {
+                    public void run() {
+                        try { if (captureSession != null) { captureSession.close(); captureSession = null; } } catch (Exception ignored) {}
+                        try { if (arCompositor != null) { arCompositor.stop(); arCompositor = null; } } catch (Exception ignored) {}
+                        try { if (previewSurface != null) { previewSurface.release(); previewSurface = null; } } catch (Exception ignored) {}
+                    }
+                });
                 return true;
             }
             public void onSurfaceTextureUpdated(SurfaceTexture s) {}
