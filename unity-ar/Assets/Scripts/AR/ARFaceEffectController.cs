@@ -21,6 +21,9 @@ public sealed class ARFaceEffectController : MonoBehaviour
 
     private ARFace trackedFace;
     private GameObject activeEffect;
+    private Vector3 followVelocity;
+    [SerializeField, Range(0.01f, 0.20f)] private float positionSmoothTime = 0.045f;
+    [SerializeField, Range(4f, 30f)] private float rotationSharpness = 18f;
 
     private void Reset()
     {
@@ -31,6 +34,25 @@ public sealed class ARFaceEffectController : MonoBehaviour
     {
         if (faceManager == null)
             faceManager = GetComponent<ARFaceManager>();
+    }
+
+    private void LateUpdate()
+    {
+        if (trackedFace == null || activeEffect == null) return;
+        if (trackedFace.trackingState != TrackingState.Tracking)
+        {
+            ClearEffect();
+            trackedFace = null;
+            return;
+        }
+
+        Vector3 targetPosition = trackedFace.transform.TransformPoint(localPositionOffset);
+        Quaternion targetRotation = trackedFace.transform.rotation * Quaternion.Euler(localEulerOffset);
+        activeEffect.transform.position = Vector3.SmoothDamp(
+            activeEffect.transform.position, targetPosition, ref followVelocity, positionSmoothTime);
+        float blend = 1f - Mathf.Exp(-rotationSharpness * Time.deltaTime);
+        activeEffect.transform.rotation = Quaternion.Slerp(
+            activeEffect.transform.rotation, targetRotation, blend);
     }
 
     private void OnEnable()
@@ -105,9 +127,10 @@ public sealed class ARFaceEffectController : MonoBehaviour
 
         ClearEffect();
         trackedFace = face;
-        activeEffect = Instantiate(effectPrefab, face.transform);
-        activeEffect.transform.localPosition = localPositionOffset;
-        activeEffect.transform.localRotation = Quaternion.Euler(localEulerOffset);
+        Vector3 position = face.transform.TransformPoint(localPositionOffset);
+        Quaternion rotation = face.transform.rotation * Quaternion.Euler(localEulerOffset);
+        activeEffect = Instantiate(effectPrefab, position, rotation);
+        followVelocity = Vector3.zero;
     }
 
     private void ClearEffect()
