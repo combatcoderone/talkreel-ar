@@ -41,3 +41,16 @@ This is a Unity-side prototype scaffold, not a completed Android integration or 
 ## Licensing
 
 Unity, AR Foundation and ARCore have their own terms. Verify the applicable Unity plan and all third-party asset/model licences before commercial distribution.
+
+
+## Face alignment guidance
+
+ARCore Augmented Faces in AR Foundation exposes a face-center pose, three region poses (left forehead, right forehead and nose tip), and a 468-vertex face mesh. Android ARCore face tracking currently tracks one face at a time. Use these region poses and the face mesh to calibrate effects; do not use one generic center offset for every accessory.
+
+- Glasses: calibrate against eye/face-mesh landmarks and verify head yaw.
+- Crown/headwear: use forehead region poses and face width from the mesh.
+- Nose accessories: use the nose-tip region pose.
+- Face paint/masks: use the face mesh UVs and a face-following material; use a depth/occlusion setup where appropriate.
+- Keep effect prefab pivots at their intended attachment point and author scale in meters.
+
+For the face prefab, add `ARFaceMeshVisualizer` when a rendered face mesh is needed for debugging or occlusion. Do not ship a visible debug mesh as a consumer effect unless that is the intended design.
