@@ -85,7 +85,7 @@ under the script editor. 9 real songs, from open sources, free to download.
 - Play: test a track first. If it is already downloaded, it plays the local
   file. If it is not downloaded yet, it streams the same download URL, so
   you can hear it before you spend data on a download. Tap Stop to stop it.
-- Download: saves the MP3 locally, in Music/TalkReelAR on the phone, about
+- Download: saves the MP3 in TalkReel's app-specific Music/TalkReelAR folder, about
   2 to 5 MB per track. Nothing is downloaded unless you tap Download.
   Nothing is bundled in the APK, so the app stays small.
 - Use: picks this track for the next clip. Enable Music in settings and
@@ -204,7 +204,7 @@ not from this repo.
 5. Tap Overlay, allow Draw over other apps, when Android asks.
 6. Paste a script, pick a track in Music, tap Play to test it, tap Download
    if you want it on the phone, tap Use, press Record, talk, press Stop.
-7. Find clips in Movies/TalkReelAR, music in Music/TalkReelAR.
+7. Find exported clips in Movies/TalkReelAR. Downloaded tracks are stored in TalkReel's app-specific music folder and are removed when the app is uninstalled.
 
 If Play Protect warns, tap Details, then Install anyway, or turn off Scan
 apps in Play Protect during install and turn it back on. That warning is
