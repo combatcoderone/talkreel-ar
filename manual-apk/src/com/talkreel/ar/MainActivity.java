@@ -593,7 +593,7 @@ public class MainActivity extends Activity {
             musicList.addView(musicRow);
         }
         TextView musicNote = new TextView(this);
-        musicNote.setText("Sources: Pixabay Music, free, no attribution, and Kevin MacLeod, CC BY 4.0, credit required. See docs/MUSIC.md for every track, license, and link. Music plays through the speaker while you record, it is not mixed into the video file yet.");
+        musicNote.setText("Download the selected track before recording. TalkReel mixes downloaded music under the microphone audio during finished-video export. Track licenses and attribution: docs/MUSIC.md.");
         musicNote.setTextColor(0xFFAAAAAA);
         musicNote.setTextSize(12);
         musicNote.setPadding(8, 8, 8, 8);
@@ -1387,6 +1387,12 @@ public class MainActivity extends Activity {
 
     private void startRecording() {
         if (AppState.isRecording || pendingRecordWhenCameraReady) return;
+        if (useMusic && (musicTrackIndex < 0 || musicTrackIndex >= MusicCatalog.TRACKS.length
+                || !MusicEngine.isDownloaded(this, MusicCatalog.TRACKS[musicTrackIndex]))) {
+            Toast.makeText(this, "Download the selected music track before recording to mix it cleanly into the finished MP4.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        MusicEngine.stop();
         if (android.os.Build.VERSION.SDK_INT >= 23 &&
                 checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 43);
@@ -1465,9 +1471,6 @@ public class MainActivity extends Activity {
                                                 if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(service);
                                                 else startService(service);
                                             } catch (Exception ignored) {}
-                                            if (useMusic && musicTrackIndex >= 0 && musicTrackIndex < MusicCatalog.TRACKS.length) {
-                                                MusicEngine.play(MainActivity.this, MusicCatalog.TRACKS[musicTrackIndex], true, mainHandler, null);
-                                            }
                                             mainHandler.post(new Runnable() {
                                                 public void run() {
                                                     recordButton.setText("Stop recording");
@@ -1523,6 +1526,34 @@ public class MainActivity extends Activity {
         });
     }
 
+
+    private void startMedia3Export(final File clip, final File music, final File srt) {
+        final Runnable showFinal = new Runnable() {
+            public void run() {
+                File finalClip = AppState.lastFile == null ? null : new File(AppState.lastFile);
+                showVideoReview(finalClip != null && finalClip.isFile() && finalClip.length() > 0 ? finalClip : clip);
+            }
+        };
+        final Runnable showOriginal = new Runnable() {
+            public void run() {
+                if (statusView != null) statusView.setText("Original recording saved. Finished export was unavailable; review the original clip.");
+                showVideoReview(clip);
+            }
+        };
+        try {
+            Class<?> pipeline = Class.forName("com.talkreel.ar.Media3ExportPipeline");
+            java.lang.reflect.Method export = pipeline.getMethod("export",
+                    android.app.Activity.class, File.class, File.class, File.class,
+                    Handler.class, Runnable.class, Runnable.class);
+            Object started = export.invoke(null, this, clip, music, srt, mainHandler, showFinal, showOriginal);
+            if (Boolean.FALSE.equals(started)) showOriginal.run();
+            else if (statusView != null) statusView.setText("Creating finished MP4 with selected music and captions…");
+        } catch (Exception unavailable) {
+            if (statusView != null) statusView.setText("Original recording saved. Advanced export is unavailable in this build.");
+            showVideoReview(clip);
+        }
+    }
+
     private void stopRecording() {
         if (!AppState.isRecording) {
             if (pauseButton != null) pauseButton.setText("Pause");
@@ -1572,10 +1603,15 @@ public class MainActivity extends Activity {
                 CaptionStore.finish(finalSec);
                 SilenceLog.finish(finalSec);
                 String extra = "";
+                final File musicForExport = useMusic && musicTrackIndex >= 0 && musicTrackIndex < MusicCatalog.TRACKS.length
+                        ? MusicEngine.localFile(MainActivity.this, MusicCatalog.TRACKS[musicTrackIndex]) : null;
+                final File captionsForExport;
                 if (AppState.isPro) {
-                    CaptionStore.write(clip);
+                    captionsForExport = CaptionStore.write(clip);
                     SilenceLog.write(clip);
                     extra = "  SRT: " + CaptionStore.count() + " lines. Cuts: " + SilenceLog.count() + ".";
+                } else {
+                    captionsForExport = null;
                 }
                 final String msg = extra;
                 mainHandler.post(new Runnable() {
@@ -1585,7 +1621,12 @@ public class MainActivity extends Activity {
                         if (statusView != null) statusView.setText("Saved in TalkReel app storage. Export from Review video." + msg);
                         Toast.makeText(MainActivity.this, "Recording saved. Review it, then export to your phone.", Toast.LENGTH_LONG).show();
                         startPreview();
-                        showVideoReview(clip);
+                        if ((musicForExport != null && musicForExport.isFile() && musicForExport.length() > 0)
+                                || (captionsForExport != null && captionsForExport.isFile())) {
+                            startMedia3Export(clip, musicForExport, captionsForExport);
+                        } else {
+                            showVideoReview(clip);
+                        }
                     }
                 });
             }
