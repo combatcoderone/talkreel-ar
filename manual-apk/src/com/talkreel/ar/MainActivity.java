@@ -891,7 +891,7 @@ public class MainActivity extends Activity {
             player.setVideoURI(uri);
             player.setMediaController(new android.widget.MediaController(this));
             player.setOnPreparedListener(new android.media.MediaPlayer.OnPreparedListener() {
-                public void onPrepared(android.media.MediaPlayer mp) { mp.setLooping(false); }
+                public void onPrepared(android.media.MediaPlayer mp) { mp.setLooping(false); player.start(); }
             });
         } catch (Exception e) {
             Toast.makeText(this, "Could not load video preview: " + e.getMessage(), Toast.LENGTH_LONG).show();
