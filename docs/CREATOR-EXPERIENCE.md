@@ -13,14 +13,21 @@ Test at minimum on several Android devices, front camera, good/low light, glasse
 
 ## Selfie picture-in-picture
 
-The native app now exposes Android system PiP with three aspect-ratio presets:
-- Portrait 9:16
-- Square 1:1
-- Landscape 16:9
+The native app supports two modes:
 
-The user taps **Use PiP** after the front-camera preview is ready. In PiP mode, the app hides editing controls and keeps the camera preview visible. Android owns the PiP window's screen position and resize gestures; the app sets its aspect ratio, not an arbitrary pixel size or screen coordinate. Users can move/resize the system PiP window using the device's standard PiP gestures where supported.
+### In-app floating selfie preview
+- **Float selfie** pins the live preview above TalkReel's scrollable content, so the user can edit the script, browse music and use app controls while the camera preview remains visible.
+- Drag the floating preview to reposition it.
+- **Selfie size − / +** changes its width within a bounded range; the preview keeps a portrait 9:16 frame.
+- The preview remains the same TextureView and camera output surface. It is resized/repositioned in place rather than reparented, avoiding deliberate camera-session teardown during recording.
+- The position and size are saved in preferences.
 
-This is not the same as an in-app floating mini-window over TalkReel's own scrollable controls. That requires a separate overlay container/window design and explicit testing of touch routing and camera lifecycle. It is not claimed as implemented here.
+### Android system PiP
+- **System PiP** enters Android's floating activity mode after the camera preview is ready.
+- The user can choose 9:16, 1:1 or 16:9 system-window aspect presets.
+- Android controls the system PiP window's screen position and resize gestures. The app selects the aspect ratio, not an arbitrary OS window coordinate.
+
+The in-app floating preview is the mode intended for using TalkReel's own controls while recording. System PiP is intended for keeping the selfie preview visible while switching to other apps.
 
 ## Music improvements
 
