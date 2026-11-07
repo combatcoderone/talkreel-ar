@@ -64,6 +64,9 @@ import java.util.Locale;
 // the user taps Overlay. Overlay buttons only send a request,
 // they never change state here.
 public class MainActivity extends Activity {
+    private volatile ArCompositor arCompositor;
+    private volatile boolean activityDestroyed = false;
+    private volatile int faceDetectMode = CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF;
     private TextureView textureView;
     private ProFrameView frameView;
     private TextView statusView;
@@ -167,7 +170,7 @@ public class MainActivity extends Activity {
         AppState.speed = prefs.getFloat("speed", 1.0f);
         AppState.langMode = prefs.getInt("langMode", 0);
         AppState.showFrame = prefs.getBoolean("showFrame", true);
-        AppState.arFilter = prefs.getInt("arFilter", ProFrameView.FILTER_GUIDE);
+        AppState.arFilter = Math.max(0, Math.min(ProFrameView.FILTER_COUNT - 1, prefs.getInt("arFilter", ProFrameView.FILTER_GUIDE)));
         AppState.isPro = prefs.getBoolean("isPro", false);
         AppState.textColorIndex = prefs.getInt("textColor", 0);
         AppState.captionColorIndex = prefs.getInt("captionColor", 1);
@@ -257,7 +260,7 @@ public class MainActivity extends Activity {
         previewBox.addView(frameView);
         root.addView(previewBox);
         TextView arNote = new TextView(this);
-        arNote.setText("AR face effects are live-preview overlays. Exported video remains on the existing camera recording path.");
+        arNote.setText("AR effects are composited by the GPU into Studio preview and recorded video. Effects use camera face rectangles, not dense facial landmarks.");
         arNote.setTextColor(0xFFAAAAAA);
         arNote.setTextSize(11);
         arNote.setPadding(8, 3, 8, 5);
@@ -364,14 +367,15 @@ public class MainActivity extends Activity {
             }
         });
         rowPro.addView(faceButton);
-        final Button arFilterButton = UiStyle.dark(this, "AR preview: " + ProFrameView.filterName(AppState.arFilter));
+        final Button arFilterButton = UiStyle.dark(this, "AR effect: " + ProFrameView.filterName(AppState.arFilter));
         arFilterButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.arFilter = (AppState.arFilter + 1) % ProFrameView.FILTER_COUNT;
                 frameView.setFilter(AppState.arFilter);
-                arFilterButton.setText("AR preview: " + ProFrameView.filterName(AppState.arFilter));
+                if (arCompositor != null) arCompositor.setFilter(AppState.arFilter);
+                arFilterButton.setText("AR effect: " + ProFrameView.filterName(AppState.arFilter));
                 savePrefs();
-                statusView.setText("AR preview: " + ProFrameView.filterName(AppState.arFilter) + " · Guide turns effects off");
+                statusView.setText("AR effect: " + ProFrameView.filterName(AppState.arFilter) + " · Applied to preview and recording");
             }
         });
         rowPro.addView(arFilterButton);
@@ -613,11 +617,16 @@ public class MainActivity extends Activity {
                 // preview on the new surface. openCamera() alone
                 // returns early when cameraDevice != null, so the
                 // preview stayed black after a surface recreate.
-                if (cameraDevice != null) startPreview(); else openCamera();
+                if (cameraDevice != null && cameraHandler != null) cameraHandler.post(new Runnable() { public void run() { startPreview(); } }); else openCamera();
             }
             public void onSurfaceTextureSizeChanged(SurfaceTexture s, int w, int h) {}
             public boolean onSurfaceTextureDestroyed(SurfaceTexture s) {
-                try { if (captureSession != null) { captureSession.close(); captureSession = null; } } catch (Exception e) {}
+                if (cameraHandler != null) cameraHandler.post(new Runnable() {
+                    public void run() {
+                        try { if (captureSession != null) { captureSession.close(); captureSession = null; } } catch (Exception ignored) {}
+                        if (arCompositor != null) { try { arCompositor.stop(); } catch (Exception ignored) {} arCompositor = null; }
+                    }
+                });
                 return true;
             }
             public void onSurfaceTextureUpdated(SurfaceTexture s) {}
@@ -694,12 +703,12 @@ public class MainActivity extends Activity {
     private void applyCreatorSettings(String script, int size, int ar, int music, int shape, float speed) {
         AppState.script = script; scriptEdit.setText(script); teleprompterView.setText(script);
         teleprompterTextSize = size; teleprompterView.setTextSize(size);
-        AppState.arFilter = ar; frameView.setFilter(ar);
+        AppState.arFilter = ar; frameView.setFilter(ar); if (arCompositor != null) arCompositor.setFilter(ar);
         musicTrackIndex = Math.max(0, Math.min(music, MusicCatalog.TRACKS.length - 1));
         selfieFrameShape = shape; frameView.setFrameShape(shape);
         AppState.speed = speed; savePrefs();
         if (musicToggleButton != null) musicToggleButton.setText(useMusic ? "Music in recording: On" : "Music in recording: Off");
-        statusView.setText("Settings applied · Preview only · Not recording");
+        statusView.setText("Settings applied · Preview ready · Not recording");
     }
     private void showMainSettings() {
         final LinearLayout form = new LinearLayout(this); form.setOrientation(LinearLayout.VERTICAL);
@@ -1248,15 +1257,22 @@ public class MainActivity extends Activity {
                             }
                             mapped = new Rect(left, top, right, bottom);
                         } else {
-                            mapped = new Rect(r.left * vw / 1000, r.top * vh / 1000, r.right * vw / 1000, r.bottom * vh / 1000);
+                            mapped = new Rect(r.left * vw / 1000, r.top * vh / 1000,
+                                    r.right * vw / 1000, r.bottom * vh / 1000);
                         }
                         rects.add(mapped);
                     }
                     frameView.setFaces(rects);
+                    if (arCompositor != null && !rects.isEmpty()) {
+                        Rect face = rects.get(0);
+                        arCompositor.setFaceRect(face.left / (float) vw, face.top / (float) vh,
+                                face.right / (float) vw, face.bottom / (float) vh, isFrontCamera);
+                    }
                     return;
                 }
             }
             if (frameView != null) frameView.clearFaces();
+            if (arCompositor != null) arCompositor.clearFace();
         }
     };
 
@@ -1299,6 +1315,14 @@ public class MainActivity extends Activity {
                     }
                     CameraCharacteristics chars = manager.getCameraCharacteristics(cameraId);
                     activeArray = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+                    faceDetectMode = CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF;
+                    int[] faceModes = chars.get(CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES);
+                    if (faceModes != null) {
+                        for (int mode : faceModes) if (mode == CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL) faceDetectMode = mode;
+                        if (faceDetectMode == CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF) {
+                            for (int mode : faceModes) if (mode == CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE) faceDetectMode = mode;
+                        }
+                    }
                     Integer facing = chars.get(CameraCharacteristics.LENS_FACING);
                     isFrontCamera = facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT;
                     if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) { cameraOpening = false; return; }
@@ -1327,11 +1351,13 @@ public class MainActivity extends Activity {
                             cameraOpening = false;
                             camera.close();
                             if (cameraDevice == camera) cameraDevice = null;
+                            if (arCompositor != null) { try { arCompositor.stop(); } catch (Exception ignored) {} arCompositor = null; }
                         }
                         public void onError(CameraDevice camera, int error) {
                             cameraOpening = false;
                             camera.close();
                             if (cameraDevice == camera) cameraDevice = null;
+                            if (arCompositor != null) { try { arCompositor.stop(); } catch (Exception ignored) {} arCompositor = null; }
                             if (error == CameraDevice.StateCallback.ERROR_CAMERA_IN_USE || error == CameraDevice.StateCallback.ERROR_MAX_CAMERAS_IN_USE) {
                                 showCameraWaiting();
                             } else {
@@ -1366,23 +1392,49 @@ public class MainActivity extends Activity {
     }
 
     private void startPreview() {
+        if (activityDestroyed || cameraHandler == null) return;
+        if (Looper.myLooper() != cameraHandler.getLooper()) {
+            cameraHandler.post(new Runnable() { public void run() { startPreview(); } });
+            return;
+        }
         try {
-            if (cameraDevice == null) return;
-            SurfaceTexture tex = textureView.getSurfaceTexture();
-            if (tex == null) return;
-            tex.setDefaultBufferSize(720, 1280);
-            Surface surface = new Surface(tex);
+            if (cameraDevice == null || textureView == null) return;
+            SurfaceTexture texture = textureView.getSurfaceTexture();
+            if (texture == null) return;
+            if (arCompositor == null) arCompositor = new ArCompositor(cameraHandler);
+            Surface cameraSurface = arCompositor.start(texture, 720, 1280);
+            arCompositor.setFilter(AppState.arFilter);
+            if (captureSession != null) {
+                try { captureSession.close(); } catch (Exception ignored) {}
+                captureSession = null;
+            }
             previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-            previewBuilder.addTarget(surface);
-            previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
-            cameraDevice.createCaptureSession(Arrays.asList(surface), new CameraCaptureSession.StateCallback() {
+            previewBuilder.addTarget(cameraSurface);
+            previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, faceDetectMode);
+            cameraDevice.createCaptureSession(Arrays.asList(cameraSurface), new CameraCaptureSession.StateCallback() {
                 public void onConfigured(CameraCaptureSession session) {
                     captureSession = session;
-                    try { session.setRepeatingRequest(previewBuilder.build(), faceCallback, cameraHandler); } catch (Exception e) {}
+                    try {
+                        if (cameraDevice != null && !activityDestroyed)
+                            session.setRepeatingRequest(previewBuilder.build(), faceCallback, cameraHandler);
+                    } catch (Exception e) {
+                        mainHandler.post(new Runnable() { public void run() {
+                            if (statusView != null) statusView.setText("Camera preview could not start.");
+                        }});
+                    }
                 }
-                public void onConfigureFailed(CameraCaptureSession session) {}
+                public void onConfigureFailed(CameraCaptureSession session) {
+                    mainHandler.post(new Runnable() { public void run() {
+                        if (statusView != null) statusView.setText("Camera preview configuration failed.");
+                    }});
+                }
             }, cameraHandler);
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            final String message = e.getMessage();
+            mainHandler.post(new Runnable() { public void run() {
+                if (statusView != null) statusView.setText("Preview error: " + (message == null ? "camera initialization failed" : message));
+            }});
+        }
     }
 
     private void startRecording() {
