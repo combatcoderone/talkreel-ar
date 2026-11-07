@@ -1527,6 +1527,7 @@ public class MainActivity extends Activity {
                             mediaRecorder = null;
                         }
                     } catch (Exception ignored) {}
+                    try { if (arCompositor != null) arCompositor.setEncoderSurface(null); } catch (Exception ignored) {}
                     try { if (captureSession != null) { captureSession.close(); captureSession = null; } } catch (Exception ignored) {}
                     try { if (previewSurface != null) { previewSurface.release(); previewSurface = null; } } catch (Exception ignored) {}
                     final File failed = AppState.lastFile == null ? null : new File(AppState.lastFile);
