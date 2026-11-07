@@ -598,7 +598,9 @@ public class MainActivity extends Activity {
             musicList.addView(musicRow);
         }
         TextView musicNote = new TextView(this);
-        musicNote.setText("Download the selected track before recording. TalkReel mixes downloaded music under the microphone audio during finished-video export. Track licenses and attribution: docs/MUSIC.md.");
+        musicNote.setText(isMedia3ExportAvailable()
+                ? "Download the selected track before recording. TalkReel mixes downloaded music under the microphone audio during finished-video export. Track licenses and attribution: docs/MUSIC.md."
+                : "This standalone build can preview music only. Digital mixing requires the Media3-enabled Gradle build. Track licenses: docs/MUSIC.md.");
         musicNote.setTextColor(0xFFAAAAAA);
         musicNote.setTextSize(12);
         musicNote.setPadding(8, 8, 8, 8);
@@ -1461,8 +1463,21 @@ public class MainActivity extends Activity {
         }
     }
 
+    private boolean isMedia3ExportAvailable() {
+        try {
+            Class.forName("com.talkreel.ar.Media3ExportPipeline");
+            return true;
+        } catch (Exception unavailable) {
+            return false;
+        }
+    }
+
     private void startRecording() {
         if (AppState.isRecording || pendingRecordWhenCameraReady) return;
+        if (useMusic && !isMedia3ExportAvailable()) {
+            Toast.makeText(this, "Digital music mixing requires the Media3-enabled Gradle build. Turn Music off or install that build.", Toast.LENGTH_LONG).show();
+            return;
+        }
         if (useMusic && (musicTrackIndex < 0 || musicTrackIndex >= MusicCatalog.TRACKS.length
                 || !MusicEngine.isDownloaded(this, MusicCatalog.TRACKS[musicTrackIndex]))) {
             Toast.makeText(this, "Download the selected music track before recording to mix it cleanly into the finished MP4.", Toast.LENGTH_LONG).show();
