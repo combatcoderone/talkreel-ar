@@ -66,6 +66,7 @@ import java.util.Locale;
 public class MainActivity extends Activity {
     private volatile ArCompositor arCompositor;
     private volatile boolean activityDestroyed = false;
+    private volatile boolean activityResumed = false;
     private volatile int faceDetectMode = CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF;
     private TextureView textureView;
     private ProFrameView frameView;
@@ -665,6 +666,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onPause() {
+        activityResumed = false;
         if (!AppState.isRecording) releaseCamera();
         super.onPause();
     }
@@ -672,6 +674,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        activityResumed = true;
         // v0.6.1: reopen if the camera is missing for any reason,
         // not only after Instagram or YouTube. That covers the
         // first launch after the permission dialog, and a surface
@@ -1312,7 +1315,7 @@ public class MainActivity extends Activity {
 
     private void openCamera() {
         // Guard: one open at a time. This stops the open/close loop.
-        if (activityDestroyed || cameraOpening || cameraDevice != null) return;
+        if (activityDestroyed || !activityResumed || cameraOpening || cameraDevice != null) return;
         if (textureView == null || !textureView.isAvailable()) return;
         cameraOpening = true;
         cameraHandler.post(new Runnable() {
