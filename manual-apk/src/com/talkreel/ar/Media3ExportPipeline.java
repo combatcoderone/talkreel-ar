@@ -127,6 +127,7 @@ public final class Media3ExportPipeline {
                             if (!temporary.renameTo(output)) {
                                 temporary.delete();
                                 Toast.makeText(activity, "Export finished, but final file could not be moved. Original is safe.", Toast.LENGTH_LONG).show();
+                                if (callbackHandler != null && onFailed != null) callbackHandler.post(onFailed);
                                 return;
                             }
                             AppState.lastFile = output.getAbsolutePath();
