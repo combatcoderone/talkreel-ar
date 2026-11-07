@@ -276,3 +276,15 @@ is wired in v0.7.0.
 - Existing recording, captions, teleprompter, music, overlay, clips, and sharing paths are retained.
 
 **Current limitation:** these are live preview overlays only. The existing MediaRecorder records the camera stream directly, so the AR artwork is not composited into the saved MP4. Embedding effects in exports requires a separate video-compositing/encoder pipeline; this update deliberately avoids changing that stable path.
+
+## Creator experience update — in progress
+
+The feature branch now includes:
+- Unity face-effect transform smoothing for the AR Foundation prototype.
+- Native Camera2 face-detection capability negotiation (FULL when supported, otherwise SIMPLE), plus smoothed preview rectangles and brief dropout tolerance. This remains a fallback, not landmark-grade face tracking.
+- Android system Picture-in-Picture with saved 9:16, 1:1 and 16:9 frame presets. Android controls the floating window's position and user resize gestures.
+- Music catalog search by title, artist, mood and use case, plus playback volume control.
+
+The PiP feature is Android system PiP, not yet an in-app floating mini-window over TalkReel's own controls. The current music catalog remains nine tracks; no unverified audio URLs have been added. Music is still not mixed into exported MP4 files. See [docs/CREATOR-EXPERIENCE.md](docs/CREATOR-EXPERIENCE.md) for architecture and device validation gates.
+
+These changes have not yet been compiled or tested on physical Android devices. Do not treat the branch as a release APK.
