@@ -72,6 +72,7 @@ public class MainActivity extends Activity {
     private int floatingPreviewWidthDp = 150;
     private float floatingPreviewX = -1f;
     private float floatingPreviewY = 88f;
+    private int pipPreviousScrollY = 0;
     private ProFrameView frameView;
     private TextView statusView;
     private TextView coachView;
@@ -924,6 +925,7 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Wait for the selfie camera preview before entering PiP.", Toast.LENGTH_LONG).show();
             return;
         }
+        if (outerScroll != null) pipPreviousScrollY = outerScroll.getScrollY();
         updatePipParams();
         try {
             enterPictureInPictureMode(new PictureInPictureParams.Builder()
@@ -944,17 +946,20 @@ public class MainActivity extends Activity {
         }
         ViewGroup.LayoutParams lp = previewBox.getLayoutParams();
         if (inPip) {
-            // The PiP activity has a much smaller viewport; reset the in-app
-            // floating translation so the camera preview remains inside it.
+            // Scroll the camera preview into the PiP viewport before hiding
+            // the other controls; restore the editor position on exit.
+            if (outerScroll != null) outerScroll.post(new Runnable() { public void run() { outerScroll.scrollTo(0, previewBox.getTop()); } });
             previewBox.setTranslationX(0f);
             previewBox.setTranslationY(0f);
             lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
             lp.height = 520;
         } else if (floatingPreview) {
+            if (outerScroll != null) outerScroll.post(new Runnable() { public void run() { outerScroll.scrollTo(0, pipPreviousScrollY); } });
             lp.width = dp(floatingPreviewWidthDp);
             lp.height = Math.round(dp(floatingPreviewWidthDp) * (16.0f / 9.0f));
             previewBox.post(new Runnable() { public void run() { updateFloatingPreviewPosition(); } });
         } else {
+            if (outerScroll != null) outerScroll.post(new Runnable() { public void run() { outerScroll.scrollTo(0, pipPreviousScrollY); } });
             lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
             lp.height = 520;
             previewBox.setTranslationX(0f);
@@ -1466,7 +1471,9 @@ public class MainActivity extends Activity {
                                             wordsInWindow = 0;
                                             mainHandler.post(new Runnable() {
                                                 public void run() {
-                                                    if (useMusic && musicTrackIndex >= 0 && musicTrackIndex < MusicCatalog.TRACKS.length) {
+                                                    if (useMusic && customMusicUri != null) {
+                                                        MusicEngine.playUri(MainActivity.this, customMusicUri, true, mainHandler, null);
+                                                    } else if (useMusic && musicTrackIndex >= 0 && musicTrackIndex < MusicCatalog.TRACKS.length) {
                                                         MusicEngine.play(MainActivity.this, MusicCatalog.TRACKS[musicTrackIndex], true, mainHandler, null);
                                                     }
                                                     recordButton.setText("Stop");
