@@ -87,6 +87,9 @@ public class MainActivity extends Activity {
     private Button captionColorButton;
     private Button musicToggleButton;
     private TextView musicStatusView;
+    private Button customMusicButton;
+    private Uri customMusicUri;
+    private static final int REQUEST_CUSTOM_MUSIC = 701;
     private int scriptEditorHeight = 260;
     private boolean preferFrontCamera = true;
     private int musicTrackIndex = 0;
@@ -175,6 +178,10 @@ public class MainActivity extends Activity {
         scriptEditorHeight = prefs.getInt("scriptEditorHeight", 260);
         preferFrontCamera = prefs.getBoolean("faceOn", true);
         useMusic = prefs.getBoolean("useMusic", false);
+        String savedCustomMusic = prefs.getString("customMusicUri", "");
+        if (savedCustomMusic != null && !savedCustomMusic.isEmpty()) {
+            try { customMusicUri = Uri.parse(savedCustomMusic); } catch (Exception ignored) {}
+        }
         requestPermissions(new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS}, 1);
         cameraThread = new HandlerThread("CameraThread");
         cameraThread.start();
@@ -476,7 +483,7 @@ public class MainActivity extends Activity {
                 musicToggleButton.setText(useMusic ? "Music: On" : "Music: Off");
                 savePrefs();
                 if (!useMusic) MusicEngine.stop();
-                statusView.setText(useMusic ? "Music in clip: " + MusicCatalog.TRACKS[musicTrackIndex].title : "Music in clip: Off. See Music below.");
+                statusView.setText(useMusic ? (customMusicUri != null ? "Music in clip: your selected audio" : "Music in clip: " + MusicCatalog.TRACKS[musicTrackIndex].title) : "Music in clip: Off. See Music below.");
             }
         });
         row4.addView(musicToggleButton);
@@ -560,6 +567,22 @@ public class MainActivity extends Activity {
             public void onStopTrackingTouch(SeekBar bar) {}
         });
         root.addView(musicVolume);
+        customMusicButton = UiStyle.primary(this, customMusicUri == null ? "Add audio from phone" : "Custom audio selected");
+        customMusicButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { pickCustomMusic(); }
+        });
+        root.addView(customMusicButton);
+        Button clearCustomMusicButton = UiStyle.dark(this, "Clear custom audio");
+        clearCustomMusicButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                customMusicUri = null;
+                customMusicButton.setText("Add audio from phone");
+                savePrefs();
+                musicStatusView.setText("Custom audio cleared. Choose a catalog track below.");
+                MusicEngine.stop();
+            }
+        });
+        root.addView(clearCustomMusicButton);
         LinearLayout musicList = new LinearLayout(this);
         musicList.setOrientation(LinearLayout.VERTICAL);
         SafeScrollView musicScroll = new SafeScrollView(this);
@@ -620,6 +643,8 @@ public class MainActivity extends Activity {
             useButton.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
                     musicTrackIndex = trackIndex;
+                    customMusicUri = null;
+                    if (customMusicButton != null) customMusicButton.setText("Add audio from phone");
                     useMusic = true;
                     if (musicToggleButton != null) musicToggleButton.setText("Music: On");
                     savePrefs();
@@ -680,6 +705,39 @@ public class MainActivity extends Activity {
                 return true;
             }
             public void onSurfaceTextureUpdated(SurfaceTexture s) {}
+        });
+    }
+
+    private void pickCustomMusic() {
+        if (AppState.isRecording) {
+            Toast.makeText(this, "Stop recording before changing the music source.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        pick.addCategory(Intent.CATEGORY_OPENABLE);
+        pick.setType("audio/*");
+        pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        try { startActivityForResult(pick, REQUEST_CUSTOM_MUSIC); }
+        catch (Exception e) { Toast.makeText(this, "No audio file picker is available.", Toast.LENGTH_LONG).show(); }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_CUSTOM_MUSIC || resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        Uri selected = data.getData();
+        try {
+            int flags = data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
+            getContentResolver().takePersistableUriPermission(selected, flags);
+        } catch (Exception ignored) {}
+        customMusicUri = selected;
+        useMusic = true;
+        if (musicToggleButton != null) musicToggleButton.setText("Music: On");
+        if (customMusicButton != null) customMusicButton.setText("Custom audio selected");
+        savePrefs();
+        musicStatusView.setText("Selected your audio file. Previewing now; it will loop during the next recording.");
+        MusicEngine.playUri(this, customMusicUri, false, mainHandler, new MusicEngine.Callback() {
+            public void onResult(boolean ok, String message) { musicStatusView.setText(message); }
         });
     }
 
@@ -852,7 +910,7 @@ public class MainActivity extends Activity {
 
     private void savePrefs() {
         SharedPreferences prefs = getSharedPreferences("talkreel", MODE_PRIVATE);
-        prefs.edit().putString("script", AppState.script).putFloat("speed", AppState.speed).putInt("langMode", AppState.langMode).putBoolean("showFrame", AppState.showFrame).putBoolean("isPro", AppState.isPro).putInt("textColor", AppState.textColorIndex).putInt("captionColor", AppState.captionColorIndex).putInt("musicTrack", musicTrackIndex).putBoolean("useMusic", useMusic).putInt("scriptEditorHeight", scriptEditorHeight).putBoolean("faceOn", preferFrontCamera) .putInt("arFilter", AppState.arFilter).putInt("pipAspectMode", pipAspectMode).putBoolean("floatingPreview", floatingPreview).putInt("floatingPreviewWidthDp", floatingPreviewWidthDp).putFloat("floatingPreviewX", floatingPreviewX).putFloat("floatingPreviewY", floatingPreviewY).apply();
+        prefs.edit().putString("customMusicUri", customMusicUri == null ? "" : customMusicUri.toString()).putString("script", AppState.script).putFloat("speed", AppState.speed).putInt("langMode", AppState.langMode).putBoolean("showFrame", AppState.showFrame).putBoolean("isPro", AppState.isPro).putInt("textColor", AppState.textColorIndex).putInt("captionColor", AppState.captionColorIndex).putInt("musicTrack", musicTrackIndex).putBoolean("useMusic", useMusic).putInt("scriptEditorHeight", scriptEditorHeight).putBoolean("faceOn", preferFrontCamera) .putInt("arFilter", AppState.arFilter).putInt("pipAspectMode", pipAspectMode).putBoolean("floatingPreview", floatingPreview).putInt("floatingPreviewWidthDp", floatingPreviewWidthDp).putFloat("floatingPreviewX", floatingPreviewX).putFloat("floatingPreviewY", floatingPreviewY).apply();
     }
 
     private void releaseCamera() {
@@ -1308,7 +1366,9 @@ public class MainActivity extends Activity {
                     // v0.7.0: if music is on, play the selected track on loop
                     // while recording. It plays through the speaker, so the
                     // mic hears it. Stop it in stopRecording().
-                    if (useMusic && musicTrackIndex >= 0 && musicTrackIndex < MusicCatalog.TRACKS.length) {
+                    if (useMusic && customMusicUri != null) {
+                        MusicEngine.playUri(MainActivity.this, customMusicUri, true, mainHandler, null);
+                    } else if (useMusic && musicTrackIndex >= 0 && musicTrackIndex < MusicCatalog.TRACKS.length) {
                         MusicEngine.play(MainActivity.this, MusicCatalog.TRACKS[musicTrackIndex], true, mainHandler, null);
                     }
                     AppState.isRecording = true;
