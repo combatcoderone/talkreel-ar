@@ -121,7 +121,7 @@ public class TalkReelService extends Service {
     private void refreshOverlayButtons() {
         if (recButton != null) recButton.setText(overlayScrollRunning ? "Pause scroll" : "Start scroll");
         if (pauseButton != null) pauseButton.setText("Reset text");
-        if (overlayTimer != null) overlayTimer.setText(overlayScrollRunning ? "PROMPTER RUNNING  ·  use social app controls to record" : "PROMPTER PAUSED  ·  use social app controls to record");
+        if (overlayTimer != null) overlayTimer.setText(overlayScrollRunning ? "Teleprompter scrolling" : "Teleprompter paused");
     }
 
     private void showOverlay() {
@@ -208,17 +208,17 @@ public class TalkReelService extends Service {
 
         LinearLayout row2 = new LinearLayout(this);
         row2.setOrientation(LinearLayout.HORIZONTAL);
-        final Button textButton = UiStyle.dark(this, "Text: " + AppState.textColorName());
+        final Button textButton = UiStyle.dark(this, "Text color: " + AppState.textColorName());
         textButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.nextTextColor();
                 getSharedPreferences("talkreel", MODE_PRIVATE).edit().putInt("textColor", AppState.textColorIndex).apply();
-                textButton.setText("Text: " + AppState.textColorName());
+                textButton.setText("Text color: " + AppState.textColorName());
                 if (overlayText != null) overlayText.setTextColor(AppState.textColor());
             }
         });
         row2.addView(textButton);
-        Button smallerButton = UiStyle.dark(this, "Text −");
+        Button smallerButton = UiStyle.dark(this, "Text size −");
         smallerButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 overlayTextSize = Math.max(16, overlayTextSize - 2);
@@ -227,7 +227,7 @@ public class TalkReelService extends Service {
             }
         });
         row2.addView(smallerButton);
-        Button largerButton = UiStyle.dark(this, "Text +");
+        Button largerButton = UiStyle.dark(this, "Text size +");
         largerButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 overlayTextSize = Math.min(48, overlayTextSize + 2);
@@ -238,22 +238,22 @@ public class TalkReelService extends Service {
         row2.addView(largerButton);
         // v0.7.0: old Sound button played synthesized beeps. Now it plays
         // the track picked in the Music section, streamed if not downloaded.
-        final Button musicButton = UiStyle.dark(this, "Music");
+        final Button musicButton = UiStyle.dark(this, "Preview music");
         musicButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 if (MusicEngine.isPlaying()) {
                     MusicEngine.stop();
-                    musicButton.setText("Music");
+                    musicButton.setText("Preview music");
                 } else {
                     int idx = getSharedPreferences("talkreel", MODE_PRIVATE).getInt("musicTrack", 0);
                     if (idx < 0 || idx >= MusicCatalog.TRACKS.length) idx = 0;
                     MusicEngine.play(TalkReelService.this, MusicCatalog.TRACKS[idx], true, new android.os.Handler(android.os.Looper.getMainLooper()), null);
-                    musicButton.setText("Music: Playing");
+                    musicButton.setText("Music playing");
                 }
             }
         });
         row2.addView(musicButton);
-        Button close = UiStyle.dark(this, "Close");
+        Button close = UiStyle.dark(this, "Close overlay");
         close.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { stopOverlay(); }
         });
