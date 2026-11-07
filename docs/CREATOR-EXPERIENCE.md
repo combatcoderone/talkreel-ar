@@ -33,8 +33,9 @@ The in-app floating preview is the mode intended for using TalkReel's own contro
 
 - Search the existing catalog by title, artist, mood or intended use.
 - Adjust preview/recording playback volume from the Music section.
+- Import a user-owned audio file through Android's document picker; the persisted URI can be previewed and looped during the next recording.
 - Play, stop, download and select-for-recording controls remain separate.
-- Current catalog remains the nine previously documented tracks. Do not add new download URLs until the MP3 is fetched and checked, the source page and licence are reviewed, and any attribution/Content ID caveats are recorded.
+- Current online catalog remains the nine previously documented tracks. The user can add more by importing a local audio file. Do not add new online download URLs until the MP3 is fetched and checked, the source page and licence are reviewed, and any attribution/Content ID caveats are recorded.
 - Important recording limitation remains: current MediaRecorder captures the microphone and camera; music playback through the phone speaker can leak into the microphone. Clean soundtrack mixing requires an encoder/audio-muxing pipeline and is not implemented by this UI work.
 
 ## UI review checklist
@@ -54,6 +55,6 @@ The in-app floating preview is the mode intended for using TalkReel's own contro
 2. Face effects remain attached through head movement and recover after temporary tracking loss.
 3. In-app floating preview can be enabled, dragged and resized while scrolling and while recording, without interrupting the camera/recorder session.
 4. Android system PiP enters/exits without losing the camera or leaving the app in a stale UI state; aspect presets persist across launches.
-5. Music search filters every catalog row; volume affects the active MediaPlayer.
+5. Music search filters every catalog row; volume affects the active MediaPlayer; a selected document-provider audio URI persists and plays on the next recording.
 6. Existing recording, pause/resume, captions, music selection, clip saving and sharing regression tests pass.
 7. Exported MP4 is inspected separately; preview overlays are not considered recorded until a compositing pipeline is implemented.
