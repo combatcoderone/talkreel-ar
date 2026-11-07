@@ -113,7 +113,7 @@ public class MainActivity extends Activity {
     private int wordsInWindow = 0;
     private long windowStartAt = 0;
     private int restartCount = 0;
-    private volatile boolean cameraOpening = false;
+    private volatile boolean cameraOpening = false;\n    private volatile boolean cameraReleasePending = false;
     private volatile boolean cameraReleasedForSocial = false;
     private int quietSeconds = 0;
 
@@ -829,7 +829,7 @@ public class MainActivity extends Activity {
         // first launch after the permission dialog, and a surface
         // recreate. Guarded by cameraOpening, and only once per
         // resume, so it cannot loop.
-        if (cameraDevice == null && textureView != null && textureView.isAvailable()) {
+        if ((cameraDevice == null || cameraReleasePending) && textureView != null && textureView.isAvailable()) {
             boolean hadReleased = cameraReleasedForSocial;
             cameraReleasedForSocial = false;
             mainHandler.postDelayed(new Runnable() {
