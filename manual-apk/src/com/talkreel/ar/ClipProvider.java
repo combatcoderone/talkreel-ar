@@ -25,8 +25,16 @@ public class ClipProvider extends ContentProvider {
     private File fileForUri(Uri uri) {
         String name = uri.getLastPathSegment();
         if (name == null || name.contains("..") || name.contains("/")) return null;
-        File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "TalkReelAR");
-        return new File(dir, name);
+        // New recordings are staged in app-specific storage for scoped-storage safety.
+        if (getContext() != null) {
+            File base = getContext().getExternalFilesDir(Environment.DIRECTORY_MOVIES);
+            File appDir = new File(base == null ? getContext().getFilesDir() : base, "TalkReelAR");
+            File appFile = new File(appDir, name);
+            if (appFile.exists()) return appFile;
+        }
+        // Keep access to clips created by older app versions.
+        File legacyDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "TalkReelAR");
+        return new File(legacyDir, name);
     }
 
     @Override
