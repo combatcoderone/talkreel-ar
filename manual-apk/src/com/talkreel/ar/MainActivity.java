@@ -975,15 +975,17 @@ public class MainActivity extends Activity {
     }
 
     private void releaseCamera() {
-        try {
-            if (captureSession != null) { captureSession.close(); captureSession = null; }
-        } catch (Exception e) {}
-        try { if (previewSurface != null) { previewSurface.release(); previewSurface = null; } } catch (Exception e) {}
-        try {
-            if (cameraDevice != null) { cameraDevice.close(); cameraDevice = null; }
-        } catch (Exception e) {}
-        cameraOpening = false;
         cameraReleasedForSocial = true;
+        if (cameraHandler == null) return;
+        cameraHandler.post(new Runnable() {
+            public void run() {
+                try { if (captureSession != null) { captureSession.close(); captureSession = null; } } catch (Exception ignored) {}
+                try { if (arCompositor != null) { arCompositor.stop(); arCompositor = null; } } catch (Exception ignored) {}
+                try { if (previewSurface != null) { previewSurface.release(); previewSurface = null; } } catch (Exception ignored) {}
+                try { if (cameraDevice != null) { cameraDevice.close(); cameraDevice = null; } } catch (Exception ignored) {}
+                cameraOpening = false;
+            }
+        });
     }
 
     private void startOverlay() {
@@ -1564,6 +1566,7 @@ public class MainActivity extends Activity {
                     try { if (mediaRecorder != null) mediaRecorder.release(); } catch (Exception ignored) {}
                     mediaRecorder = null;
                 }
+                try { if (arCompositor != null) arCompositor.setEncoderSurface(null); } catch (Exception ignored) {}
                 try { if (captureSession != null) { captureSession.close(); captureSession = null; } } catch (Exception ignored) {}
                 try { if (previewSurface != null) { previewSurface.release(); previewSurface = null; } } catch (Exception ignored) {}
                 CaptionStore.finish(finalSec);
