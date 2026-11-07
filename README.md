@@ -8,7 +8,16 @@ Repo: combatcoderone/talkreel-ar
 Min SDK: 26 (Android 8.0), Target SDK: 36 (Android 16)
 Build: Gradle Android application module, with source retained in manual-apk/src
 ARCore: com.google.ar:core:1.57.0
-Status: development candidate; not yet device-validated or Play-ready
+Status: creator-feature integration candidate; not yet device-validated or Play-ready
+
+
+## Creator workflow additions in `feature/creator-arcore-complete`
+
+- **AR Studio:** dedicated front-camera ARCore Augmented Faces preview with a live 468-point face mesh and selectable Contour, Neon, and Studio treatments. This is real ARCore face tracking, separate from the lightweight Camera2 framing rectangles in the recording screen.
+- **Selfie preview:** enable a draggable in-app floating preview, resize it with Selfie size −/+, and keep it visible while scrolling the teleprompter.
+- **Android system PiP:** choose 9:16, 1:1, or 16:9 and enter system picture-in-picture. Android controls the PiP window's position and resize gestures.
+- **Music:** search tracks by title, artist, or mood; adjust playback volume; import an audio file from the device and use it during the next TalkReel recording.
+- **Recording limitation:** AR Studio is a live preview and does not yet composite its 3D face mesh into saved MP4s. Music is played through the device output and captured acoustically by the microphone; it is not digitally mixed into the MP4. A camera/encoder compositor and audio mux stage are still required for clean recorded AR effects and music.
 
 ## What it is
 
