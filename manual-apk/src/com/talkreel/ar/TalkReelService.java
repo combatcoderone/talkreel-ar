@@ -96,7 +96,12 @@ public class TalkReelService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        String action = intent == null ? null : intent.getAction();
+        if (intent == null) {
+            stopForeground(true);
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+        String action = intent.getAction();
         if (ACTION_STOP_ALL.equals(action)) {
             stopOverlay();
             stopForeground(true);
@@ -106,7 +111,7 @@ public class TalkReelService extends Service {
         if (ACTION_TOGGLE_RECORD.equals(action)) {
             // Request only, MainActivity owns the result.
             sendBroadcast(new Intent(AppState.ACTION_RECORD));
-            return START_STICKY;
+            return START_NOT_STICKY;
         }
         if (ACTION_RECORDING_FINISHED.equals(action)) {
             if (overlayView != null) {
@@ -142,7 +147,7 @@ public class TalkReelService extends Service {
             recordingType |= android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE;
         }
         startForegroundNotification(recordingType);
-        return START_STICKY;
+        return START_NOT_STICKY;
     }
 
     private void refreshOverlayButtons() {
