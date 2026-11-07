@@ -39,6 +39,7 @@ public class TalkReelService extends Service {
     public static final String ACTION_START_OVERLAY = "com.talkreel.ar.START_OVERLAY";
     public static final String ACTION_STOP_ALL = "com.talkreel.ar.STOP_ALL";
     public static final String ACTION_TOGGLE_RECORD = "com.talkreel.ar.TOGGLE_RECORD";
+    public static final String ACTION_RECORDING_FINISHED = "com.talkreel.ar.RECORDING_FINISHED";
 
     private WindowManager windowManager;
     private View overlayView;
@@ -64,10 +65,9 @@ public class TalkReelService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        startForegroundNotification();
     }
 
-    private void startForegroundNotification() {
+    private void startForegroundNotification(int foregroundType) {
         String channelId = "talkreel_record";
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationChannel channel = new NotificationChannel(channelId, "TalkReel recording", NotificationManager.IMPORTANCE_LOW);
@@ -85,12 +85,8 @@ public class TalkReelService extends Service {
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(pi)
             .build();
-        // v0.6.1 fix: Android 14 requires a foreground service type
-        // when starting a foreground service. Pass camera and mic
-        // explicitly, matching the manifest, instead of the old
-        // 2-arg startForeground which can throw on Android 14.
         if (android.os.Build.VERSION.SDK_INT >= 29) {
-            startForeground(1, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA | android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+            startForeground(1, n, foregroundType);
         } else {
             startForeground(1, n);
         }
@@ -98,10 +94,10 @@ public class TalkReelService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent == null) return START_STICKY;
-        String action = intent.getAction();
+        String action = intent == null ? null : intent.getAction();
         if (ACTION_STOP_ALL.equals(action)) {
             stopOverlay();
+            stopForeground(true);
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -110,11 +106,36 @@ public class TalkReelService extends Service {
             sendBroadcast(new Intent(AppState.ACTION_RECORD));
             return START_STICKY;
         }
-        if (ACTION_START_OVERLAY.equals(action)) {
-            showOverlay();
-            return START_STICKY;
+        if (ACTION_RECORDING_FINISHED.equals(action)) {
+            if (overlayView != null) {
+                int type = android.os.Build.VERSION.SDK_INT >= 34
+                        ? android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE : 0;
+                startForegroundNotification(type);
+                return START_NOT_STICKY;
+            }
+            stopForeground(true);
+            stopSelf();
+            return START_NOT_STICKY;
         }
-        // ACTION_START_SERVICE: foreground only, no overlay.
+        if (ACTION_START_OVERLAY.equals(action)) {
+            int type = android.os.Build.VERSION.SDK_INT >= 34
+                    ? android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE : 0;
+            if (AppState.isRecording && android.os.Build.VERSION.SDK_INT >= 34) {
+                type |= android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+                        | android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+            }
+            startForegroundNotification(type);
+            showOverlay();
+            return START_NOT_STICKY;
+        }
+        // Recording uses camera and microphone only after the user starts a clip.
+        int recordingType = android.os.Build.VERSION.SDK_INT >= 29
+                ? android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+                        | android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE : 0;
+        if (overlayView != null && android.os.Build.VERSION.SDK_INT >= 34) {
+            recordingType |= android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE;
+        }
+        startForegroundNotification(recordingType);
         return START_STICKY;
     }
 
@@ -309,6 +330,10 @@ public class TalkReelService extends Service {
         if (overlayView != null && windowManager != null) {
             try { windowManager.removeView(overlayView); } catch (Exception e) {}
             overlayView = null;
+        }
+        if (!AppState.isRecording) {
+            try { stopForeground(true); } catch (Exception ignored) {}
+            stopSelf();
         }
     }
 
