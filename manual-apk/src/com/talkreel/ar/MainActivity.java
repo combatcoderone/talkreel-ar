@@ -306,17 +306,17 @@ public class MainActivity extends Activity {
             }
         });
         rowPro.addView(coachButton);
-        final Button frameButton = UiStyle.dark(this, AppState.showFrame ? "Frame: On" : "Frame: Off");
+        final Button frameButton = UiStyle.dark(this, AppState.showFrame ? "Guides: On" : "Guides: Off");
         frameButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.showFrame = !AppState.showFrame;
-                frameButton.setText(AppState.showFrame ? "Frame: On" : "Frame: Off");
+                frameButton.setText(AppState.showFrame ? "Guides: On" : "Guides: Off");
                 savePrefs();
                 if (frameView != null) frameView.postInvalidate();
             }
         });
         rowPro.addView(frameButton);
-        final Button faceButton = UiStyle.dark(this, preferFrontCamera ? "Face: On" : "Face: Off");
+        final Button faceButton = UiStyle.dark(this, preferFrontCamera ? "Front camera" : "Rear camera");
         faceButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 if (AppState.isRecording) {
@@ -324,7 +324,7 @@ public class MainActivity extends Activity {
                     return;
                 }
                 preferFrontCamera = !preferFrontCamera;
-                faceButton.setText(preferFrontCamera ? "Face: On" : "Face: Off");
+                faceButton.setText(preferFrontCamera ? "Front camera" : "Rear camera");
                 savePrefs();
                 releaseCamera();
                 statusView.setText(preferFrontCamera ? "Face mode on: front camera" : "Face mode off: rear camera");
@@ -332,12 +332,12 @@ public class MainActivity extends Activity {
             }
         });
         rowPro.addView(faceButton);
-        final Button arFilterButton = UiStyle.dark(this, "AR: " + ProFrameView.filterName(AppState.arFilter));
+        final Button arFilterButton = UiStyle.dark(this, "AR preview: " + ProFrameView.filterName(AppState.arFilter));
         arFilterButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.arFilter = (AppState.arFilter + 1) % ProFrameView.FILTER_COUNT;
                 frameView.setFilter(AppState.arFilter);
-                arFilterButton.setText("AR: " + ProFrameView.filterName(AppState.arFilter));
+                arFilterButton.setText("AR preview: " + ProFrameView.filterName(AppState.arFilter));
                 savePrefs();
                 statusView.setText("AR preview: " + ProFrameView.filterName(AppState.arFilter) + " · Guide turns effects off");
             }
@@ -400,11 +400,11 @@ public class MainActivity extends Activity {
             }
         });
         row3.addView(langButton);
-        textColorButton = UiStyle.dark(this, "Text: " + AppState.textColorName());
+        textColorButton = UiStyle.dark(this, "Prompter color: " + AppState.textColorName());
         textColorButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.nextTextColor();
-                textColorButton.setText("Text: " + AppState.textColorName());
+                textColorButton.setText("Prompter color: " + AppState.textColorName());
                 teleprompterView.setTextColor(AppState.textColor());
                 scriptEdit.setTextColor(AppState.textColor());
                 savePrefs();
@@ -415,11 +415,11 @@ public class MainActivity extends Activity {
 
         LinearLayout row4 = new LinearLayout(this);
         row4.setOrientation(LinearLayout.HORIZONTAL);
-        captionColorButton = UiStyle.dark(this, "Caption: " + AppState.captionColorName());
+        captionColorButton = UiStyle.dark(this, "Caption color: " + AppState.captionColorName());
         captionColorButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.nextCaptionColor();
-                captionColorButton.setText("Caption: " + AppState.captionColorName());
+                captionColorButton.setText("Caption color: " + AppState.captionColorName());
                 captionView.setTextColor(AppState.captionColor());
                 savePrefs();
             }
@@ -428,24 +428,24 @@ public class MainActivity extends Activity {
         // v0.7.0: the old Sound button played synthesized beeps, the user
         // said that music was awful. It is replaced by real music, in the
         // Music section below. This button only turns music in a clip on or off.
-        musicToggleButton = UiStyle.dark(this, useMusic ? "Music: On" : "Music: Off");
+        musicToggleButton = UiStyle.dark(this, useMusic ? "Music in recording: On" : "Music in recording: Off");
         musicToggleButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 useMusic = !useMusic;
-                musicToggleButton.setText(useMusic ? "Music: On" : "Music: Off");
+                musicToggleButton.setText(useMusic ? "Music in recording: On" : "Music in recording: Off");
                 savePrefs();
                 if (!useMusic) MusicEngine.stop();
                 statusView.setText(useMusic ? "Music in clip: " + MusicCatalog.TRACKS[musicTrackIndex].title : "Music in clip: Off. See Music below.");
             }
         });
         row4.addView(musicToggleButton);
-        final Button speedButton = UiStyle.dark(this, "Speed 1x");
+        final Button speedButton = UiStyle.dark(this, "Scroll speed 1x");
         speedButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 if (AppState.speed < 1.0f) AppState.speed = 1.0f;
                 else if (AppState.speed < 1.5f) AppState.speed = 1.5f;
                 else AppState.speed = 0.5f;
-                speedButton.setText("Speed " + AppState.speed + "x");
+                speedButton.setText("Scroll speed " + AppState.speed + "x");
                 savePrefs();
             }
         });
