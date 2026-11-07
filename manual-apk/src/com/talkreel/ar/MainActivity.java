@@ -181,7 +181,6 @@ public class MainActivity extends Activity {
         scriptEditorHeight = prefs.getInt("scriptEditorHeight", 260);
         preferFrontCamera = prefs.getBoolean("faceOn", true);
         useMusic = prefs.getBoolean("useMusic", false);
-        requestPermissions(new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS}, 1);
         cameraThread = new HandlerThread("CameraThread");
         cameraThread.start();
         cameraHandler = new Handler(cameraThread.getLooper());
@@ -648,6 +647,13 @@ public class MainActivity extends Activity {
             }
             public void onSurfaceTextureUpdated(SurfaceTexture s) {}
         });
+        // Request camera only after the main UI is attached. Microphone permission
+        // is requested on the explicit Record action, not during app startup.
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, 1);
+        } else if (textureView.isAvailable()) {
+            openCamera();
+        }
     }
 
     @Override
