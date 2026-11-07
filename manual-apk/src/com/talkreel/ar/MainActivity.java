@@ -592,6 +592,7 @@ public class MainActivity extends Activity {
         SeekBar musicVolume = new SeekBar(this);
         musicVolume.setMax(100);
         musicVolume.setProgress(80);
+        musicVolume.setContentDescription("Music preview volume");
         musicVolume.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
                 MusicEngine.setVolume(progress / 100.0f);
