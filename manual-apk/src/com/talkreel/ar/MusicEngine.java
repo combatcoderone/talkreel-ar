@@ -25,6 +25,7 @@ public class MusicEngine {
 
     private static MediaPlayer player = null;
     private static String playingTitle = null;
+    private static float volume = 0.80f;
 
     public static File musicDir(Context context) {
         File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "TalkReelAR");
@@ -47,6 +48,11 @@ public class MusicEngine {
 
     public static String playingTitle() { return playingTitle; }
 
+    public static void setVolume(float value) {
+        volume = Math.max(0.0f, Math.min(1.0f, value));
+        try { if (player != null) player.setVolume(volume, volume); } catch (Exception ignored) {}
+    }
+
     public static void stop() {
         try { if (player != null) { player.stop(); player.release(); } } catch (Exception e) {}
         player = null;
@@ -59,6 +65,7 @@ public class MusicEngine {
         try {
             player = new MediaPlayer();
             player.setLooping(loop);
+            player.setVolume(volume, volume);
             File local = localFile(context, track);
             if (local.exists() && local.length() > 10000) {
                 player.setDataSource(local.getAbsolutePath());
