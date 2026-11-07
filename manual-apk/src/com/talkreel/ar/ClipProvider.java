@@ -25,8 +25,7 @@ public class ClipProvider extends ContentProvider {
     private File fileForUri(Uri uri) {
         String name = uri.getLastPathSegment();
         if (name == null || name.contains("..") || name.contains("/")) return null;
-        File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "TalkReelAR");
-        return new File(dir, name);
+        return AppStorage.findVideo(getContext(), name);
     }
 
     @Override

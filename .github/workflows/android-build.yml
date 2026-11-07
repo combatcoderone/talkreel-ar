@@ -4,20 +4,25 @@ on:
   push:
     branches:
       - main
+      - feature/arcore-face-studio
       - feature/presenter-control-ui-v0.8
       - feature/snapchat-style-ar-v0.9
   pull_request:
     branches:
       - main
+      - feature/arcore-face-studio
     paths:
       - 'manual-apk/**'
+      - 'app/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
       - '.github/workflows/android-build.yml'
   workflow_dispatch:
 
 jobs:
   assemble:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -26,32 +31,29 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Set up Android SDK 34
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Set up Android SDK 36
         uses: android-actions/setup-android@v3
         with:
-          packages: platform-tools platforms;android-34 build-tools;34.0.0
-      - name: Prepare temporary CI signing key
-        working-directory: manual-apk
+          packages: platform-tools platforms;android-36 build-tools;36.0.0
+      - name: Build and lint ARCore-enabled APK
+        run: gradle --no-daemon :app:assembleDebug :app:lintDebug
+      - name: Verify APK package, target SDK, and signature
         run: |
-          keytool -genkeypair -noprompt -v \
-            -keystore release.keystore \
-            -storepass android -keypass android \
-            -alias talkreel-ci \
-            -dname "CN=TalkReel CI, OU=Build, O=TalkReel, L=Montreal, ST=Quebec, C=CA" \
-            -keyalg RSA -keysize 2048 -validity 10000
-      - name: Build and verify APK
-        working-directory: manual-apk
-        env:
-          TALKREEL_KEYSTORE_PASS: android
-        run: |
-          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
-          bash build.sh
-          "$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt2" dump badging app-debug.apk
-          "$ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner" verify --verbose app-debug.apk
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          BADGING="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK")"
+          echo "$BADGING"
+          echo "$BADGING" | grep -q "package: name='com.talkreel.ar' versionCode='16' versionName='0.11.0'"
+          echo "$BADGING" | grep -q "targetSdkVersion:'36'"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          test "$(stat -c%s "$APK")" -gt 100000
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: talkreel-ar-v0.9.3-apk
-          path: manual-apk/app-debug.apk
+          name: talkreel-ar-v0.11.0-arcore-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
