@@ -361,9 +361,10 @@ public class MainActivity extends Activity {
             public void onClick(View v) {
                 AppState.arFilter = (AppState.arFilter + 1) % ProFrameView.FILTER_COUNT;
                 frameView.setFilter(AppState.arFilter);
+                if (arCompositor != null) arCompositor.setFilter(AppState.arFilter);
                 arFilterButton.setText("Frame FX: " + ProFrameView.filterName(AppState.arFilter));
                 savePrefs();
-                statusView.setText("AR preview: " + ProFrameView.filterName(AppState.arFilter) + " · Guide turns effects off");
+                statusView.setText("Recorded GPU look: " + ProFrameView.filterName(AppState.arFilter));
             }
         });
         rowPro.addView(arFilterButton);
