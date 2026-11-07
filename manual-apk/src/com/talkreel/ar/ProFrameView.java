@@ -9,6 +9,7 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.util.AttributeSet;
 import android.view.View;
+import android.os.SystemClock;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,6 +21,9 @@ public class ProFrameView extends View {
     private List<Rect> faces = new ArrayList<Rect>();
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private int filter = FILTER_GUIDE;
+    private long lastFaceAt = 0L;
+    private static final long FACE_LOSS_GRACE_MS = 220L;
+    private static final float SMOOTHING = 0.38f;
 
     public ProFrameView(Context c) { super(c); }
     public ProFrameView(Context c, AttributeSet a) { super(c,a); }
@@ -32,16 +36,69 @@ public class ProFrameView extends View {
             case FILTER_NEON:return "Neon"; default:return "Guide";
         }
     }
-    public void setFaces(List<Rect> f) {
-        faces=f==null?new ArrayList<Rect>():new ArrayList<Rect>(f);
-        AppState.faceFound=!faces.isEmpty(); postInvalidate();
+    /** Smooths detector jitter and briefly holds the last box during a dropped frame. */
+    public synchronized void setFaces(List<Rect> detected) {
+        if (detected == null || detected.isEmpty()) {
+            if (SystemClock.elapsedRealtime() - lastFaceAt > FACE_LOSS_GRACE_MS) {
+                faces = new ArrayList<Rect>();
+                AppState.faceFound = false;
+            }
+            postInvalidate();
+            return;
+        }
+
+        List<Rect> next = new ArrayList<Rect>();
+        boolean[] used = new boolean[faces.size()];
+        for (Rect current : detected) {
+            if (current == null || current.width() <= 0 || current.height() <= 0) continue;
+            int best = -1;
+            double bestDistance = Double.MAX_VALUE;
+            for (int i = 0; i < faces.size(); i++) {
+                if (used[i]) continue;
+                Rect old = faces.get(i);
+                double dx = current.centerX() - old.centerX();
+                double dy = current.centerY() - old.centerY();
+                double distance = dx * dx + dy * dy;
+                if (distance < bestDistance) { bestDistance = distance; best = i; }
+            }
+            if (best >= 0 && bestDistance < (double)(getWidth() * getWidth() * 0.20f)) {
+                used[best] = true;
+                Rect old = faces.get(best);
+                next.add(new Rect(
+                    blend(old.left, current.left), blend(old.top, current.top),
+                    blend(old.right, current.right), blend(old.bottom, current.bottom)));
+            } else {
+                next.add(new Rect(current));
+            }
+        }
+        faces = next;
+        lastFaceAt = SystemClock.elapsedRealtime();
+        AppState.faceFound = !faces.isEmpty();
+        postInvalidate();
     }
-    public void clearFaces() { faces=new ArrayList<Rect>(); AppState.faceFound=false; postInvalidate(); }
+
+    private int blend(int from, int to) {
+        return Math.round(from + (to - from) * SMOOTHING);
+    }
+
+    public synchronized void clearFaces() {
+        if (SystemClock.elapsedRealtime() - lastFaceAt > FACE_LOSS_GRACE_MS) {
+            faces = new ArrayList<Rect>();
+            AppState.faceFound = false;
+        }
+        postInvalidate();
+    }
 
     @Override protected void onDraw(Canvas c) {
         super.onDraw(c);
         int w=getWidth(), h=getHeight(); if(w<=0||h<=0)return;
         if(AppState.showFrame) guides(c,w,h);
+        if (SystemClock.elapsedRealtime() - lastFaceAt > FACE_LOSS_GRACE_MS) {
+            faces = new ArrayList<Rect>();
+            AppState.faceFound = false;
+        } else if (faces.isEmpty()) {
+            postInvalidateDelayed(50);
+        }
         if(filter==FILTER_GUIDE||faces.isEmpty()) {
             if(AppState.showFrame&&!faces.isEmpty()) box(c,faces.get(0));
             return;
