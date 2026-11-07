@@ -2,6 +2,7 @@ package com.talkreel.ar;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.PictureInPictureParams;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -24,11 +25,13 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
+import android.util.Rational;
 import android.provider.Settings;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
@@ -38,6 +41,9 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.SeekBar;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.widget.Toast;
 import java.io.File;
 import java.text.SimpleDateFormat;
@@ -55,6 +61,15 @@ import java.util.Locale;
 // they never change state here.
 public class MainActivity extends Activity {
     private TextureView textureView;
+    private FrameLayout previewBox;
+    private LinearLayout contentRoot;
+    private SafeScrollView outerScroll;
+    private int pipAspectMode = 0; // 0=9:16, 1=1:1, 2=16:9
+    private boolean floatingPreview = false;
+    private int floatingPreviewWidthDp = 150;
+    private float floatingPreviewX = -1f;
+    private float floatingPreviewY = 88f;
+    private int faceDetectMode = CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF;
     private ProFrameView frameView;
     private TextView statusView;
     private TextView coachView;
@@ -72,6 +87,9 @@ public class MainActivity extends Activity {
     private Button captionColorButton;
     private Button musicToggleButton;
     private TextView musicStatusView;
+    private Button customMusicButton;
+    private Uri customMusicUri;
+    private static final int REQUEST_CUSTOM_MUSIC = 701;
     private int scriptEditorHeight = 260;
     private boolean preferFrontCamera = true;
     private int musicTrackIndex = 0;
@@ -148,6 +166,11 @@ public class MainActivity extends Activity {
         AppState.langMode = prefs.getInt("langMode", 0);
         AppState.showFrame = prefs.getBoolean("showFrame", true);
         AppState.arFilter = prefs.getInt("arFilter", ProFrameView.FILTER_GUIDE);
+        pipAspectMode = prefs.getInt("pipAspectMode", 0);
+        floatingPreview = prefs.getBoolean("floatingPreview", false);
+        floatingPreviewWidthDp = Math.max(120, Math.min(220, prefs.getInt("floatingPreviewWidthDp", 150)));
+        floatingPreviewX = prefs.getFloat("floatingPreviewX", -1f);
+        floatingPreviewY = prefs.getFloat("floatingPreviewY", dp(88));
         AppState.isPro = prefs.getBoolean("isPro", false);
         AppState.textColorIndex = prefs.getInt("textColor", 0);
         AppState.captionColorIndex = prefs.getInt("captionColor", 1);
@@ -155,6 +178,10 @@ public class MainActivity extends Activity {
         scriptEditorHeight = prefs.getInt("scriptEditorHeight", 260);
         preferFrontCamera = prefs.getBoolean("faceOn", true);
         useMusic = prefs.getBoolean("useMusic", false);
+        String savedCustomMusic = prefs.getString("customMusicUri", "");
+        if (savedCustomMusic != null && !savedCustomMusic.isEmpty()) {
+            try { customMusicUri = Uri.parse(savedCustomMusic); } catch (Exception ignored) {}
+        }
         requestPermissions(new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS}, 1);
         cameraThread = new HandlerThread("CameraThread");
         cameraThread.start();
@@ -176,7 +203,8 @@ public class MainActivity extends Activity {
             registerReceiver(controlReceiver, f);
         }
 
-        LinearLayout root = new LinearLayout(this);
+        contentRoot = new LinearLayout(this);
+        final LinearLayout root = contentRoot;
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(0xFF000000);
         root.setPadding(16, 16, 16, 16);
@@ -202,7 +230,7 @@ public class MainActivity extends Activity {
         audioView.setPadding(8, 4, 8, 8);
         root.addView(audioView);
 
-        FrameLayout previewBox = new FrameLayout(this);
+        previewBox = new FrameLayout(this);
         previewBox.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 520));
         textureView = new TextureView(this);
         textureView.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -358,6 +386,51 @@ public class MainActivity extends Activity {
         row2b.addView(shareButton);
         root.addView(row2b);
 
+        LinearLayout pipRow = new LinearLayout(this);
+        pipRow.setOrientation(LinearLayout.HORIZONTAL);
+        Button pipFrameButton = UiStyle.dark(this, "PiP frame: " + (pipAspectMode == 1 ? "1:1" : pipAspectMode == 2 ? "16:9" : "9:16"));
+        pipFrameButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                pipAspectMode = (pipAspectMode + 1) % 3;
+                String label = pipAspectMode == 0 ? "9:16" : pipAspectMode == 1 ? "1:1" : "16:9";
+                pipFrameButton.setText("PiP frame: " + label);
+                updatePipParams();
+                savePrefs();
+            }
+        });
+        pipRow.addView(pipFrameButton);
+        Button floatPreviewButton = UiStyle.primary(this, floatingPreview ? "Float: On" : "Float selfie");
+        floatPreviewButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                floatingPreview = !floatingPreview;
+                floatPreviewButton.setText(floatingPreview ? "Float: On" : "Float selfie");
+                setFloatingPreview(floatingPreview);
+                statusView.setText(floatingPreview ? "Floating selfie: drag the preview to move it; use Selfie size −/+ to resize." : "Selfie preview returned to the normal layout.");
+                savePrefs();
+            }
+        });
+        pipRow.addView(floatPreviewButton);
+        Button enterPipButton = UiStyle.primary(this, "System PiP");
+        enterPipButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { enterSelfiePip(); }
+        });
+        pipRow.addView(enterPipButton);
+        root.addView(pipRow);
+
+        LinearLayout previewSizeRow = new LinearLayout(this);
+        previewSizeRow.setOrientation(LinearLayout.HORIZONTAL);
+        Button previewSmaller = UiStyle.dark(this, "Selfie size −");
+        previewSmaller.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { resizeFloatingPreview(-20); }
+        });
+        previewSizeRow.addView(previewSmaller);
+        Button previewLarger = UiStyle.dark(this, "Selfie size +");
+        previewLarger.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { resizeFloatingPreview(20); }
+        });
+        previewSizeRow.addView(previewLarger);
+        root.addView(previewSizeRow);
+
         LinearLayout row3 = new LinearLayout(this);
         row3.setOrientation(LinearLayout.HORIZONTAL);
         Button capButton = UiStyle.dark(this, "Captions");
@@ -410,7 +483,7 @@ public class MainActivity extends Activity {
                 musicToggleButton.setText(useMusic ? "Music: On" : "Music: Off");
                 savePrefs();
                 if (!useMusic) MusicEngine.stop();
-                statusView.setText(useMusic ? "Music in clip: " + MusicCatalog.TRACKS[musicTrackIndex].title : "Music in clip: Off. See Music below.");
+                statusView.setText(useMusic ? (customMusicUri != null ? "Music in clip: your selected audio" : "Music in clip: " + MusicCatalog.TRACKS[musicTrackIndex].title) : "Music in clip: Off. See Music below.");
             }
         });
         row4.addView(musicToggleButton);
@@ -465,11 +538,51 @@ public class MainActivity extends Activity {
         musicTitle.setPadding(8, 16, 8, 4);
         root.addView(musicTitle);
         musicStatusView = new TextView(this);
-        musicStatusView.setText("Tap Play to test a track. Tap Download to save it on this phone.");
+        musicStatusView.setText("Tap Play to preview a track. Download to keep it offline; Use selects it for recording.");
         musicStatusView.setTextColor(0xFFAAAAAA);
         musicStatusView.setTextSize(13);
         musicStatusView.setPadding(8, 4, 8, 8);
         root.addView(musicStatusView);
+        EditText musicSearch = new EditText(this);
+        musicSearch.setSingleLine(true);
+        musicSearch.setTextColor(0xFFFFFFFF);
+        musicSearch.setHintTextColor(0xFF888888);
+        musicSearch.setHint("Search music by title, artist or mood");
+        musicSearch.setPadding(14, 10, 14, 10);
+        root.addView(musicSearch);
+        TextView volumeLabel = new TextView(this);
+        volumeLabel.setText("Preview volume");
+        volumeLabel.setTextColor(0xFFCCCCCC);
+        volumeLabel.setTextSize(12);
+        volumeLabel.setPadding(8, 6, 8, 0);
+        root.addView(volumeLabel);
+        SeekBar musicVolume = new SeekBar(this);
+        musicVolume.setMax(100);
+        musicVolume.setProgress(80);
+        musicVolume.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                MusicEngine.setVolume(progress / 100.0f);
+            }
+            public void onStartTrackingTouch(SeekBar bar) {}
+            public void onStopTrackingTouch(SeekBar bar) {}
+        });
+        root.addView(musicVolume);
+        customMusicButton = UiStyle.primary(this, customMusicUri == null ? "Add audio from phone" : "Custom audio selected");
+        customMusicButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { pickCustomMusic(); }
+        });
+        root.addView(customMusicButton);
+        Button clearCustomMusicButton = UiStyle.dark(this, "Clear custom audio");
+        clearCustomMusicButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                customMusicUri = null;
+                customMusicButton.setText("Add audio from phone");
+                savePrefs();
+                musicStatusView.setText("Custom audio cleared. Choose a catalog track below.");
+                MusicEngine.stop();
+            }
+        });
+        root.addView(clearCustomMusicButton);
         LinearLayout musicList = new LinearLayout(this);
         musicList.setOrientation(LinearLayout.VERTICAL);
         SafeScrollView musicScroll = new SafeScrollView(this);
@@ -491,7 +604,11 @@ public class MainActivity extends Activity {
             trackView.setTextColor(0xFFFFFFFF);
             trackView.setTextSize(14);
             trackView.setPadding(8, 8, 8, 4);
-            musicList.addView(trackView);
+            LinearLayout trackCard = new LinearLayout(this);
+            trackCard.setOrientation(LinearLayout.VERTICAL);
+            trackCard.setPadding(8, 6, 8, 10);
+            trackCard.setTag((track.title + " " + track.artist + " " + track.mood + " " + track.useFor).toLowerCase(Locale.US));
+            trackCard.addView(trackView);
             LinearLayout musicRow = new LinearLayout(this);
             musicRow.setOrientation(LinearLayout.HORIZONTAL);
             Button playButton = UiStyle.dark(this, "Play");
@@ -526,6 +643,9 @@ public class MainActivity extends Activity {
             useButton.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
                     musicTrackIndex = trackIndex;
+                    customMusicUri = null;
+                    MusicEngine.stop();
+                    if (customMusicButton != null) customMusicButton.setText("Add audio from phone");
                     useMusic = true;
                     if (musicToggleButton != null) musicToggleButton.setText("Music: On");
                     savePrefs();
@@ -533,22 +653,44 @@ public class MainActivity extends Activity {
                 }
             });
             musicRow.addView(useButton);
-            musicList.addView(musicRow);
+            trackCard.addView(musicRow);
+            musicList.addView(trackCard);
         }
+        musicSearch.addTextChangedListener(new TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                String query = s == null ? "" : s.toString().trim().toLowerCase(Locale.US);
+                for (int i = 0; i < musicList.getChildCount(); i++) {
+                    View card = musicList.getChildAt(i);
+                    Object tag = card.getTag();
+                    card.setVisibility(query.isEmpty() || (tag != null && tag.toString().contains(query)) ? View.VISIBLE : View.GONE);
+                }
+            }
+            public void afterTextChanged(Editable s) {}
+        });
         TextView musicNote = new TextView(this);
-        musicNote.setText("Sources: Pixabay Music, free, no attribution, and Kevin MacLeod, CC BY 4.0, credit required. See docs/MUSIC.md for every track, license, and link. Music plays through the speaker while you record, it is not mixed into the video file yet.");
+        musicNote.setText("Sources: Pixabay Music and Kevin MacLeod (CC BY 4.0; credit required). You can also import your own audio file. Only use music you have rights to use. Current playback comes through the phone speaker and is not mixed into the exported video yet.");
         musicNote.setTextColor(0xFFAAAAAA);
         musicNote.setTextSize(12);
         musicNote.setPadding(8, 8, 8, 8);
         root.addView(musicNote);
 
-        SafeScrollView outer = new SafeScrollView(this);
+        outerScroll = new SafeScrollView(this);
+        SafeScrollView outer = outerScroll;
         outer.setVerticalScrollBarEnabled(false);
         
         // Avoid Android framework crashes when the themed scrollbar drawable is null.
         // Scrolling remains enabled; only scrollbar rendering is disabled.
         outer.addView(root);
         setContentView(outer);
+        outer.setOnScrollChangeListener(new View.OnScrollChangeListener() {
+            public void onScrollChange(View v, int scrollX, int scrollY, int oldScrollX, int oldScrollY) {
+                if (floatingPreview) updateFloatingPreviewPosition();
+            }
+        });
+        if (floatingPreview) {
+            previewBox.post(new Runnable() { public void run() { setFloatingPreview(true); } });
+        }
 
         textureView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
             public void onSurfaceTextureAvailable(SurfaceTexture s, int w, int h) {
@@ -564,6 +706,39 @@ public class MainActivity extends Activity {
                 return true;
             }
             public void onSurfaceTextureUpdated(SurfaceTexture s) {}
+        });
+    }
+
+    private void pickCustomMusic() {
+        if (AppState.isRecording) {
+            Toast.makeText(this, "Stop recording before changing the music source.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        pick.addCategory(Intent.CATEGORY_OPENABLE);
+        pick.setType("audio/*");
+        pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        try { startActivityForResult(pick, REQUEST_CUSTOM_MUSIC); }
+        catch (Exception e) { Toast.makeText(this, "No audio file picker is available.", Toast.LENGTH_LONG).show(); }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_CUSTOM_MUSIC || resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        Uri selected = data.getData();
+        try {
+            int flags = data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
+            getContentResolver().takePersistableUriPermission(selected, flags);
+        } catch (Exception ignored) {}
+        customMusicUri = selected;
+        useMusic = true;
+        if (musicToggleButton != null) musicToggleButton.setText("Music: On");
+        if (customMusicButton != null) customMusicButton.setText("Custom audio selected");
+        savePrefs();
+        musicStatusView.setText("Selected your audio file. Previewing now; it will loop during the next recording.");
+        MusicEngine.playUri(this, customMusicUri, false, mainHandler, new MusicEngine.Callback() {
+            public void onResult(boolean ok, String message) { musicStatusView.setText(message); }
         });
     }
 
@@ -611,9 +786,132 @@ public class MainActivity extends Activity {
         savePrefs();
     }
 
+    private int dp(float value) { return Math.round(value * getResources().getDisplayMetrics().density); }
+
+    private void setFloatingPreview(boolean enabled) {
+        if (previewBox == null) return;
+        floatingPreview = enabled;
+        ViewGroup.LayoutParams lp = previewBox.getLayoutParams();
+        if (enabled) {
+            lp.width = dp(floatingPreviewWidthDp);
+            lp.height = Math.round(dp(floatingPreviewWidthDp) * (16.0f / 9.0f));
+            previewBox.setElevation(dp(16));
+            previewBox.setBackgroundColor(0xFF101010);
+            previewBox.setOnTouchListener(new View.OnTouchListener() {
+                private float startRawX, startRawY, startX, startY;
+                public boolean onTouch(View view, MotionEvent event) {
+                    if (!floatingPreview) return false;
+                    if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                        startRawX = event.getRawX(); startRawY = event.getRawY();
+                        startX = floatingPreviewX; startY = floatingPreviewY;
+                        return true;
+                    }
+                    if (event.getAction() == MotionEvent.ACTION_MOVE) {
+                        floatingPreviewX = startX + event.getRawX() - startRawX;
+                        floatingPreviewY = startY + event.getRawY() - startRawY;
+                        updateFloatingPreviewPosition();
+                        return true;
+                    }
+                    if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
+                        updateFloatingPreviewPosition(); savePrefs(); return true;
+                    }
+                    return true;
+                }
+            });
+            previewBox.post(new Runnable() { public void run() { updateFloatingPreviewPosition(); } });
+        } else {
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            lp.height = 520;
+            previewBox.setElevation(0f);
+            previewBox.setTranslationX(0f);
+            previewBox.setTranslationY(0f);
+            previewBox.setOnTouchListener(null);
+        }
+        previewBox.setLayoutParams(lp);
+    }
+
+    private void updateFloatingPreviewPosition() {
+        if (!floatingPreview || previewBox == null || outerScroll == null) return;
+        int width = dp(floatingPreviewWidthDp);
+        int height = Math.round(width * (16.0f / 9.0f));
+        int viewportWidth = outerScroll.getWidth() > 0 ? outerScroll.getWidth() : getResources().getDisplayMetrics().widthPixels;
+        int viewportHeight = outerScroll.getHeight() > 0 ? outerScroll.getHeight() : getResources().getDisplayMetrics().heightPixels;
+        if (floatingPreviewX < 0f) floatingPreviewX = viewportWidth - width - dp(12);
+        floatingPreviewX = Math.max(dp(8), Math.min(floatingPreviewX, viewportWidth - width - dp(8)));
+        floatingPreviewY = Math.max(dp(8), Math.min(floatingPreviewY, viewportHeight - height - dp(8)));
+        previewBox.setTranslationX(floatingPreviewX - previewBox.getLeft());
+        previewBox.setTranslationY(outerScroll.getScrollY() + floatingPreviewY - previewBox.getTop());
+    }
+
+    private void resizeFloatingPreview(int deltaDp) {
+        if (!floatingPreview) {
+            Toast.makeText(this, "Turn on Float selfie before resizing the preview.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        floatingPreviewWidthDp = Math.max(120, Math.min(220, floatingPreviewWidthDp + deltaDp));
+        setFloatingPreview(true);
+        savePrefs();
+    }
+
+    private void updatePipParams() {
+        if (android.os.Build.VERSION.SDK_INT < 26) return;
+        try {
+            Rational ratio = pipAspectMode == 1 ? new Rational(1, 1) : pipAspectMode == 2 ? new Rational(16, 9) : new Rational(9, 16);
+            setPictureInPictureParams(new PictureInPictureParams.Builder().setAspectRatio(ratio).build());
+        } catch (Exception ignored) {}
+    }
+
+    private void enterSelfiePip() {
+        if (android.os.Build.VERSION.SDK_INT < 26) {
+            Toast.makeText(this, "Picture-in-picture requires Android 8.0 or newer.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (cameraDevice == null || textureView == null || !textureView.isAvailable()) {
+            Toast.makeText(this, "Wait for the selfie camera preview before entering PiP.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        updatePipParams();
+        try {
+            enterPictureInPictureMode(new PictureInPictureParams.Builder()
+                .setAspectRatio(pipAspectMode == 1 ? new Rational(1, 1) : pipAspectMode == 2 ? new Rational(16, 9) : new Rational(9, 16))
+                .build());
+        } catch (Exception e) {
+            Toast.makeText(this, "Could not enter PiP: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    public void onPictureInPictureModeChanged(boolean inPip, android.content.res.Configuration configuration) {
+        super.onPictureInPictureModeChanged(inPip, configuration);
+        if (contentRoot == null || previewBox == null) return;
+        for (int i = 0; i < contentRoot.getChildCount(); i++) {
+            View child = contentRoot.getChildAt(i);
+            child.setVisibility(!inPip || child == previewBox ? View.VISIBLE : View.GONE);
+        }
+        ViewGroup.LayoutParams lp = previewBox.getLayoutParams();
+        if (inPip) {
+            // The PiP activity has a much smaller viewport; reset the in-app
+            // floating translation so the camera preview remains inside it.
+            previewBox.setTranslationX(0f);
+            previewBox.setTranslationY(0f);
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            lp.height = 520;
+        } else if (floatingPreview) {
+            lp.width = dp(floatingPreviewWidthDp);
+            lp.height = Math.round(dp(floatingPreviewWidthDp) * (16.0f / 9.0f));
+            previewBox.post(new Runnable() { public void run() { updateFloatingPreviewPosition(); } });
+        } else {
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            lp.height = 520;
+            previewBox.setTranslationX(0f);
+            previewBox.setTranslationY(0f);
+        }
+        previewBox.setLayoutParams(lp);
+    }
+
     private void savePrefs() {
         SharedPreferences prefs = getSharedPreferences("talkreel", MODE_PRIVATE);
-        prefs.edit().putString("script", AppState.script).putFloat("speed", AppState.speed).putInt("langMode", AppState.langMode).putBoolean("showFrame", AppState.showFrame).putBoolean("isPro", AppState.isPro).putInt("textColor", AppState.textColorIndex).putInt("captionColor", AppState.captionColorIndex).putInt("musicTrack", musicTrackIndex).putBoolean("useMusic", useMusic).putInt("scriptEditorHeight", scriptEditorHeight).putBoolean("faceOn", preferFrontCamera).putInt("arFilter", AppState.arFilter).apply();
+        prefs.edit().putString("customMusicUri", customMusicUri == null ? "" : customMusicUri.toString()).putString("script", AppState.script).putFloat("speed", AppState.speed).putInt("langMode", AppState.langMode).putBoolean("showFrame", AppState.showFrame).putBoolean("isPro", AppState.isPro).putInt("textColor", AppState.textColorIndex).putInt("captionColor", AppState.captionColorIndex).putInt("musicTrack", musicTrackIndex).putBoolean("useMusic", useMusic).putInt("scriptEditorHeight", scriptEditorHeight).putBoolean("faceOn", preferFrontCamera) .putInt("arFilter", AppState.arFilter).putInt("pipAspectMode", pipAspectMode).putBoolean("floatingPreview", floatingPreview).putInt("floatingPreviewWidthDp", floatingPreviewWidthDp).putFloat("floatingPreviewX", floatingPreviewX).putFloat("floatingPreviewY", floatingPreviewY).apply();
     }
 
     private void releaseCamera() {
@@ -927,8 +1225,19 @@ public class MainActivity extends Activity {
                     if (cameraId == null) cameraId = manager.getCameraIdList()[0];
                     CameraCharacteristics chars = manager.getCameraCharacteristics(cameraId);
                     activeArray = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+                    int[] supportedFaceModes = chars.get(CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES);
+                    faceDetectMode = CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF;
+                    if (supportedFaceModes != null) {
+                        for (int mode : supportedFaceModes) {
+                            if (mode == CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL) { faceDetectMode = mode; break; }
+                            if (mode == CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE) faceDetectMode = mode;
+                        }
+                    }
                     Integer facing = chars.get(CameraCharacteristics.LENS_FACING);
                     isFrontCamera = facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT;
+                    if (faceDetectMode == CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF) {
+                        mainHandler.post(new Runnable() { public void run() { statusView.setText("This camera lacks hardware face detection. Unity AR face tracking is the advanced path."); } });
+                    }
                     if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) { cameraOpening = false; return; }
                     manager.openCamera(cameraId, new CameraDevice.StateCallback() {
                         public void onOpened(CameraDevice camera) {
@@ -969,7 +1278,7 @@ public class MainActivity extends Activity {
             Surface surface = new Surface(tex);
             previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             previewBuilder.addTarget(surface);
-            previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
+            previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, faceDetectMode);
             cameraDevice.createCaptureSession(Arrays.asList(surface), new CameraCaptureSession.StateCallback() {
                 public void onConfigured(CameraCaptureSession session) {
                     captureSession = session;
@@ -1040,7 +1349,7 @@ public class MainActivity extends Activity {
                                 previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
                                 previewBuilder.addTarget(previewSurface);
                                 previewBuilder.addTarget(recorderSurface);
-                                previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
+                                previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, faceDetectMode);
                                 List<Surface> surfaces = new ArrayList<Surface>();
                                 surfaces.add(previewSurface);
                                 surfaces.add(recorderSurface);
@@ -1058,7 +1367,9 @@ public class MainActivity extends Activity {
                     // v0.7.0: if music is on, play the selected track on loop
                     // while recording. It plays through the speaker, so the
                     // mic hears it. Stop it in stopRecording().
-                    if (useMusic && musicTrackIndex >= 0 && musicTrackIndex < MusicCatalog.TRACKS.length) {
+                    if (useMusic && customMusicUri != null) {
+                        MusicEngine.playUri(MainActivity.this, customMusicUri, true, mainHandler, null);
+                    } else if (useMusic && musicTrackIndex >= 0 && musicTrackIndex < MusicCatalog.TRACKS.length) {
                         MusicEngine.play(MainActivity.this, MusicCatalog.TRACKS[musicTrackIndex], true, mainHandler, null);
                     }
                     AppState.isRecording = true;
