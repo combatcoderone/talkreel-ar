@@ -8,7 +8,7 @@ Repo: combatcoderone/talkreel-ar
 Min SDK: 26 (Android 8.0), Target SDK: 36 (Android 16)
 Build: Gradle Android application module, with source retained in manual-apk/src
 ARCore: com.google.ar:core:1.57.0
-Status: creator-feature integration candidate; not yet device-validated or Play-ready
+Status: creator-feature and GPU-compositor integration candidate; not yet build/device-validated or Play-ready
 
 
 ## Creator workflow additions in `feature/creator-arcore-complete`
@@ -17,7 +17,12 @@ Status: creator-feature integration candidate; not yet device-validated or Play-
 - **Selfie preview:** enable a draggable in-app floating preview, resize it with Selfie size −/+, and keep it visible while scrolling the teleprompter.
 - **Android system PiP:** choose 9:16, 1:1, or 16:9 and enter system picture-in-picture. Android controls the PiP window's position and resize gestures.
 - **Music:** search tracks by title, artist, or mood; adjust playback volume; import an audio file from the device and use it during the next TalkReel recording.
-- **Recording limitation:** AR Studio is a live preview and does not yet composite its 3D face mesh into saved MP4s. Music is played through the device output and captured acoustically by the microphone; it is not digitally mixed into the MP4. A camera/encoder compositor and audio mux stage are still required for clean recorded AR effects and music.
+- **Recorded video effects:** the TalkReel camera path now uses an EGL/OpenGL compositor to render GPU color treatments and approximate Camera2 face-rectangle effects into both preview and MP4 video frames. This source integration has not yet passed a Gradle build or physical-device tests. The separate ARCore 468-point face mesh remains preview-only and is not yet in the recording compositor.
+- **Audio limitation:** selected music still plays through the phone speaker and may be captured acoustically by the microphone. It is not a digital soundtrack mix. A dedicated audio-mix/export stage remains required for independent voice/music levels, ducking, fades, and reliable synchronization.
+
+## Product readiness
+
+This is a development candidate, not yet a validated paid product. See [the product review and paid-product roadmap](docs/PRODUCT_REVIEW_AND_ROADMAP.md) for the value proposition, proposed free/paid split, current gaps, and release gates. The local Pro test flag is not Google Play Billing and does not process purchases.
 
 ## What it is
 
