@@ -2,11 +2,13 @@ package com.talkreel.ar;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.ContentValues;
 import android.content.pm.PackageManager;
 import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
@@ -25,6 +27,11 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
 import android.provider.Settings;
+import android.provider.MediaStore;
+import android.widget.Spinner;
+import android.widget.ArrayAdapter;
+import android.text.InputType;
+import org.json.JSONObject;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
@@ -73,6 +80,8 @@ public class MainActivity extends Activity {
     private Button musicToggleButton;
     private TextView musicStatusView;
     private int scriptEditorHeight = 260;
+    private int teleprompterTextSize = 26;
+    private int selfieFrameShape = 0;
     private boolean preferFrontCamera = true;
     private int musicTrackIndex = 0;
     private boolean useMusic = false;
@@ -151,6 +160,8 @@ public class MainActivity extends Activity {
         AppState.isPro = prefs.getBoolean("isPro", false);
         AppState.textColorIndex = prefs.getInt("textColor", 0);
         AppState.captionColorIndex = prefs.getInt("captionColor", 1);
+        teleprompterTextSize = prefs.getInt("teleprompterTextSize", 26);
+        selfieFrameShape = prefs.getInt("selfieFrameShape", 0);
         musicTrackIndex = prefs.getInt("musicTrack", 0);
         scriptEditorHeight = prefs.getInt("scriptEditorHeight", 260);
         preferFrontCamera = prefs.getBoolean("faceOn", true);
@@ -210,6 +221,7 @@ public class MainActivity extends Activity {
         frameView = new ProFrameView(this);
         frameView.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         frameView.setFilter(AppState.arFilter);
+        frameView.setFrameShape(selfieFrameShape);
         previewBox.addView(frameView);
         root.addView(previewBox);
         TextView arNote = new TextView(this);
@@ -234,7 +246,7 @@ public class MainActivity extends Activity {
         teleprompterView = new TextView(this);
         teleprompterView.setText(AppState.script);
         teleprompterView.setTextColor(AppState.textColor());
-        teleprompterView.setTextSize(26);
+        teleprompterView.setTextSize(teleprompterTextSize);
         teleprompterView.setLineSpacing(8, 1.35f);
         teleprompterView.setPadding(8, 8, 8, 8);
         teleprompterScroll.addView(teleprompterView);
@@ -242,7 +254,7 @@ public class MainActivity extends Activity {
 
         LinearLayout row1 = new LinearLayout(this);
         row1.setOrientation(LinearLayout.HORIZONTAL);
-        recordButton = UiStyle.primary(this, "Record");
+        recordButton = UiStyle.primary(this, "Live · Start recording");
         recordButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { if (!AppState.isRecording) startRecording(); else stopRecording(); }
         });
@@ -258,6 +270,19 @@ public class MainActivity extends Activity {
         });
         row1.addView(stopButton);
         root.addView(row1);
+        LinearLayout settingsRow = new LinearLayout(this);
+        settingsRow.setOrientation(LinearLayout.HORIZONTAL);
+        Button settingsButton = UiStyle.primary(this, "Main settings");
+        settingsButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { showMainSettings(); }
+        });
+        settingsRow.addView(settingsButton, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        Button templatesButton = UiStyle.dark(this, "Templates");
+        templatesButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { showTemplates(); }
+        });
+        settingsRow.addView(templatesButton, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        root.addView(settingsRow);
 
         LinearLayout rowPro = new LinearLayout(this);
         rowPro.setOrientation(LinearLayout.HORIZONTAL);
@@ -609,6 +634,122 @@ public class MainActivity extends Activity {
         scriptEditorHeight = lp.height;
         scriptEdit.setLayoutParams(lp);
         savePrefs();
+    }
+
+    private TextView settingsLabel(String value) {
+        TextView t = new TextView(this); t.setText(value); t.setTextColor(0xFFFFFFFF);
+        t.setTextSize(13); t.setPadding(0,10,0,2); return t;
+    }
+    private int safeInt(String s, int fallback, int min, int max) {
+        try { return Math.max(min, Math.min(max, Integer.parseInt(s.trim()))); } catch(Exception e) { return fallback; }
+    }
+    private float safeFloat(String s, float fallback) {
+        try { return Math.max(0.5f, Math.min(2.0f, Float.parseFloat(s.trim()))); } catch(Exception e) { return fallback; }
+    }
+    private void applyCreatorSettings(String script, int size, int ar, int music, int shape, float speed) {
+        AppState.script = script; scriptEdit.setText(script); teleprompterView.setText(script);
+        teleprompterTextSize = size; teleprompterView.setTextSize(size);
+        AppState.arFilter = ar; frameView.setFilter(ar);
+        musicTrackIndex = Math.max(0, Math.min(music, MusicCatalog.TRACKS.length - 1)); useMusic = true;
+        selfieFrameShape = shape; frameView.setFrameShape(shape);
+        AppState.speed = speed; savePrefs();
+        if (musicToggleButton != null) musicToggleButton.setText("Music in recording: On");
+        statusView.setText("Settings applied · Preview only · Not recording");
+    }
+    private void showMainSettings() {
+        final LinearLayout form = new LinearLayout(this); form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(24, 8, 24, 8);
+        final EditText script = new EditText(this); script.setText(scriptEdit.getText().toString());
+        script.setHint("Teleprompter script"); script.setMinLines(4); script.setGravity(android.view.Gravity.TOP);
+        form.addView(settingsLabel("Teleprompter text")); form.addView(script);
+        final EditText size = new EditText(this); size.setSingleLine(true); size.setInputType(InputType.TYPE_CLASS_NUMBER);
+        size.setText(String.valueOf(teleprompterTextSize)); form.addView(settingsLabel("Teleprompter text size (12–64 sp)")); form.addView(size);
+        final Spinner ar = new Spinner(this); String[] effects = new String[ProFrameView.FILTER_COUNT];
+        for(int i=0;i<effects.length;i++) effects[i]=ProFrameView.filterName(i);
+        ar.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, effects));
+        ar.setSelection(AppState.arFilter); form.addView(settingsLabel("AR / makeup preview")); form.addView(ar);
+        final Spinner music = new Spinner(this); String[] tracks = new String[MusicCatalog.TRACKS.length];
+        for(int i=0;i<tracks.length;i++) tracks[i]=MusicCatalog.TRACKS[i].title;
+        music.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, tracks));
+        music.setSelection(Math.max(0,Math.min(musicTrackIndex,tracks.length-1)));
+        form.addView(settingsLabel("Music track")); form.addView(music);
+        final Spinner shape = new Spinner(this); String[] shapes = {"Rectangle","Circle","Heart","Oval"};
+        shape.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, shapes));
+        shape.setSelection(Math.max(0,Math.min(selfieFrameShape,shapes.length-1)));
+        form.addView(settingsLabel("Selfie frame shape")); form.addView(shape);
+        final EditText speed = new EditText(this); speed.setSingleLine(true);
+        speed.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        speed.setText(String.valueOf(AppState.speed)); form.addView(settingsLabel("Teleprompter scroll speed (0.5–2.0)")); form.addView(speed);
+        new AlertDialog.Builder(this).setTitle("Main settings").setView(form)
+            .setNegativeButton("Cancel",null)
+            .setNeutralButton("Apply",(d,w)->applyCreatorSettings(script.getText().toString(),
+                safeInt(size.getText().toString(),26,12,64),ar.getSelectedItemPosition(),music.getSelectedItemPosition(),
+                shape.getSelectedItemPosition(),safeFloat(speed.getText().toString(),1.0f)))
+            .setPositiveButton("Save as template",(d,w)->{
+                applyCreatorSettings(script.getText().toString(),safeInt(size.getText().toString(),26,12,64),
+                    ar.getSelectedItemPosition(),music.getSelectedItemPosition(),shape.getSelectedItemPosition(),
+                    safeFloat(speed.getText().toString(),1.0f));
+                final EditText name = new EditText(this); name.setSingleLine(true); name.setHint("Template name");
+                new AlertDialog.Builder(this).setTitle("Save template").setView(name).setNegativeButton("Cancel",null)
+                    .setPositiveButton("Save",(dd,ww)->{
+                        String n=name.getText().toString().trim(); if(n.isEmpty()) n="My template";
+                        try {
+                            JSONObject o=new JSONObject(); o.put("script",AppState.script); o.put("size",teleprompterTextSize);
+                            o.put("ar",AppState.arFilter); o.put("music",musicTrackIndex); o.put("shape",selfieFrameShape); o.put("speed",AppState.speed);
+                            getSharedPreferences("talkreel_templates",MODE_PRIVATE).edit().putString("template:"+n,o.toString()).apply();
+                            Toast.makeText(this,"Template saved: "+n,Toast.LENGTH_SHORT).show();
+                        } catch(Exception e) { Toast.makeText(this,"Could not save template.",Toast.LENGTH_LONG).show(); }
+                    }).show();
+            }).show();
+    }
+    private void showTemplates() {
+        SharedPreferences p=getSharedPreferences("talkreel_templates",MODE_PRIVATE);
+        java.util.ArrayList<String> names=new java.util.ArrayList<String>();
+        for(String k:p.getAll().keySet()) if(k.startsWith("template:")) names.add(k.substring(9));
+        if(names.isEmpty()) { Toast.makeText(this,"No templates saved yet.",Toast.LENGTH_LONG).show(); return; }
+        final String[] items=names.toArray(new String[names.size()]);
+        new AlertDialog.Builder(this).setTitle("Apply template").setItems(items,(d,which)->{
+            try {
+                JSONObject o=new JSONObject(p.getString("template:"+items[which],"{}"));
+                applyCreatorSettings(o.optString("script",AppState.script),o.optInt("size",26),o.optInt("ar",0),
+                    o.optInt("music",0),o.optInt("shape",0),(float)o.optDouble("speed",1.0));
+            } catch(Exception e) { Toast.makeText(this,"Template could not be loaded.",Toast.LENGTH_LONG).show(); }
+        }).setNegativeButton("Cancel",null).show();
+    }
+    private void showVideoReview(final File clip) {
+        if(clip==null || !clip.exists() || clip.length()==0) return;
+        new AlertDialog.Builder(this).setTitle("Review video")
+            .setMessage(clip.getName()+"\n"+(clip.length()/1024)+" KB\n\nPlay and check the result before sharing.")
+            .setNegativeButton("Close",null)
+            .setNeutralButton("Play",(d,w)->{
+                try { Uri u=ClipProvider.uriForFile(clip); Intent i=new Intent(Intent.ACTION_VIEW);
+                    i.setDataAndType(u,"video/mp4"); i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); startActivity(i);
+                } catch(Exception e) { Toast.makeText(this,"No video player is available.",Toast.LENGTH_LONG).show(); }
+            })
+            .setPositiveButton("Export to phone",(d,w)->exportVideoToPhone(clip)).show();
+    }
+    private void exportVideoToPhone(File clip) {
+        if(clip==null || !clip.exists() || clip.length()==0) return;
+        if(android.os.Build.VERSION.SDK_INT<29) { Toast.makeText(this,"Saved in Movies/TalkReelAR.",Toast.LENGTH_LONG).show(); return; }
+        Uri dest=null;
+        try {
+            ContentValues v=new ContentValues(); v.put(MediaStore.Video.Media.DISPLAY_NAME,clip.getName());
+            v.put(MediaStore.Video.Media.MIME_TYPE,"video/mp4");
+            v.put(MediaStore.Video.Media.RELATIVE_PATH,Environment.DIRECTORY_MOVIES+"/TalkReelAR");
+            v.put(MediaStore.Video.Media.IS_PENDING,1);
+            dest=getContentResolver().insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,v);
+            if(dest==null) throw new IllegalStateException("Could not create destination");
+            java.io.InputStream in=new java.io.FileInputStream(clip);
+            java.io.OutputStream out=getContentResolver().openOutputStream(dest);
+            if(out==null) throw new IllegalStateException("Could not open destination");
+            byte[] buf=new byte[8192]; int n; while((n=in.read(buf))!=-1) out.write(buf,0,n);
+            in.close(); out.close(); ContentValues done=new ContentValues(); done.put(MediaStore.Video.Media.IS_PENDING,0);
+            getContentResolver().update(dest,done,null,null);
+            Toast.makeText(this,"Exported to Movies/TalkReelAR.",Toast.LENGTH_LONG).show();
+        } catch(Exception e) {
+            if(dest!=null) try { getContentResolver().delete(dest,null,null); } catch(Exception ignored) {}
+            Toast.makeText(this,"Export failed: "+e.getMessage(),Toast.LENGTH_LONG).show();
+        }
     }
 
     private void savePrefs() {
@@ -1068,7 +1209,7 @@ public class MainActivity extends Activity {
                     wordsInWindow = 0;
                     mainHandler.post(new Runnable() {
                         public void run() {
-                            recordButton.setText("Stop");
+                            recordButton.setText("Stop recording");
                             statusView.setText("REC 0s  " + AppState.exportLabel());
                             mainHandler.post(ticker);
                         }
@@ -1108,7 +1249,7 @@ public class MainActivity extends Activity {
                 final String msg = extra;
                 mainHandler.post(new Runnable() {
                     public void run() {
-                        recordButton.setText("Record");
+                        recordButton.setText("Live · Start recording");
                         pauseButton.setText("Pause");
                         statusView.setText("Saved to Movies/TalkReelAR." + msg);
                         Toast.makeText(MainActivity.this, "Saved to Movies/TalkReelAR", Toast.LENGTH_LONG).show();
