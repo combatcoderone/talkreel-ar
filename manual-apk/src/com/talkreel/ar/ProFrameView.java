@@ -18,7 +18,7 @@ import java.util.List;
 public class ProFrameView extends View {
     public static final int FILTER_GUIDE=0, FILTER_GLOW=1, FILTER_GLASSES=2,
         FILTER_BUNNY=3, FILTER_CROWN=4, FILTER_NEON=5, FILTER_COUNT=6;
-    private List<Rect> faces = new ArrayList<Rect>();
+    private volatile List<Rect> faces = new ArrayList<Rect>();
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private int filter = FILTER_GUIDE;
     private long lastFaceAt = 0L;
