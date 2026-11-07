@@ -738,8 +738,12 @@ public class MainActivity extends Activity {
                 new AlertDialog.Builder(this).setTitle("Save template").setView(name).setNegativeButton("Cancel",null)
                     .setPositiveButton("Save",(dd,ww)->{
                         String n=name.getText().toString().trim(); if(n.isEmpty()) n="My template";
+                        if ("Default".equalsIgnoreCase(n)) {
+                            Toast.makeText(this, "Default is reserved. Choose another template name.", Toast.LENGTH_LONG).show();
+                            return;
+                        }
                         try {
-                            JSONObject o=new JSONObject(); o.put("script",AppState.script); o.put("size",teleprompterTextSize);
+                            JSONObject o=new JSONObject(); o.put("schemaVersion",1); o.put("script",AppState.script); o.put("size",teleprompterTextSize);
                             o.put("ar",AppState.arFilter); o.put("music",musicTrackIndex); o.put("musicEnabled",useMusic); o.put("shape",selfieFrameShape); o.put("speed",AppState.speed);
                             getSharedPreferences("talkreel_templates",MODE_PRIVATE).edit().putString("template:"+n,o.toString()).apply();
                             Toast.makeText(this,"Template saved: "+n,Toast.LENGTH_SHORT).show();
