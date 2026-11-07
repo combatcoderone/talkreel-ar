@@ -2,6 +2,13 @@ plugins {
     id 'com.android.application' version '8.13.2'
 }
 
+def releaseKeystorePath = System.getenv('TALKREEL_RELEASE_KEYSTORE_PATH')
+def releaseStorePassword = System.getenv('TALKREEL_RELEASE_STORE_PASSWORD')
+def releaseKeyAlias = System.getenv('TALKREEL_RELEASE_KEY_ALIAS')
+def releaseKeyPassword = System.getenv('TALKREEL_RELEASE_KEY_PASSWORD')
+def hasReleaseSigning = [releaseKeystorePath, releaseStorePassword, releaseKeyAlias, releaseKeyPassword]
+    .every { it != null && !it.trim().isEmpty() }
+
 android {
     namespace 'com.talkreel.ar'
     compileSdk 36
@@ -17,6 +24,24 @@ android {
             manifest.srcFile 'AndroidManifest.xml'
             java.srcDirs = ['src']
             res.srcDirs = ['res']
+        }
+    }
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseKeystorePath)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
         }
     }
     compileOptions {
