@@ -150,7 +150,6 @@ public final class Media3ExportPipeline {
             activeTransformer = null;
             temporary.delete();
             Toast.makeText(activity, "Export unavailable. Original clip is safe: " + e.getMessage(), Toast.LENGTH_LONG).show();
-            if (callbackHandler != null && onFailed != null) callbackHandler.post(onFailed);
             return false;
         }
     }
