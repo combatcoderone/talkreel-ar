@@ -14,7 +14,7 @@ import java.net.URL;
 // Play for test: if the track is downloaded, play the local file.
 // If it is not downloaded yet, stream the download URL, so the user can
 // hear it before deciding to download. Download locally: save the MP3
-// in Music/TalkReelAR, on a background thread, never on the UI thread.
+// in app-specific external Music/TalkReelAR storage, on a background thread.
 // Use in clip: play the selected track on loop while recording, stop it
 // when recording stops. The music plays through the phone speaker, so the
 // mic hears it. That is the honest limit: it is background music in the
@@ -27,8 +27,10 @@ public class MusicEngine {
     private static String playingTitle = null;
 
     public static File musicDir(Context context) {
-        File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "TalkReelAR");
-        dir.mkdirs();
+        File base = context.getExternalFilesDir(Environment.DIRECTORY_MUSIC);
+        if (base == null) base = context.getFilesDir();
+        File dir = new File(base, "TalkReelAR");
+        if (!dir.exists()) dir.mkdirs();
         return dir;
     }
 
