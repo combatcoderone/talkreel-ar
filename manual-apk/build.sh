@@ -22,8 +22,8 @@ if [ ! -f release.keystore ]; then
   echo "Error: release.keystore not found in manual-apk/. Create your own keystore first, do not commit it." >&2
   exit 1
 fi
-ANDROID_JAR="$SDK/platforms/android-34/android.jar"
-BT="$SDK/build-tools/34.0.0"
+ANDROID_JAR="$SDK/platforms/android-36/android.jar"
+BT="$SDK/build-tools/36.0.0"
 export JAVA_HOME="$JDK"
 export PATH="$JDK/bin:$PATH"
 rm -rf out classes dex compiled.zip unsigned.apk aligned.apk app-debug.apk
@@ -33,7 +33,7 @@ echo "1. Compile resources"
 echo "2. Link APK"
 "$BT/aapt2" link -o unsigned.apk --manifest AndroidManifest.xml -I "$ANDROID_JAR" compiled.zip --auto-add-overlay
 echo "3. Compile Java"
-javac -encoding UTF-8 --release 8 -cp "$ANDROID_JAR" -d classes $(find src -name "*.java")
+javac -encoding UTF-8 --release 8 -cp "$ANDROID_JAR" -d classes $(find src -name "*.java" ! -name "Media3ExportPipeline.java")
 echo "4. Dex"
 jar --create --file app.jar -C classes .
 "$BT/d8" --release --lib "$ANDROID_JAR" --output dex app.jar

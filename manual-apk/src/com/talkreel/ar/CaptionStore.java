@@ -1,7 +1,10 @@
 package com.talkreel.ar;
 
 import java.io.File;
-import java.io.FileWriter;
+import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -65,7 +68,7 @@ public class CaptionStore {
         try {
             String name = clipFile.getName().replace(".mp4", ".srt");
             File out = new File(clipFile.getParentFile(), name);
-            FileWriter w = new FileWriter(out);
+            Writer w = new OutputStreamWriter(new FileOutputStream(out), StandardCharsets.UTF_8);
             w.write(toSrt());
             w.close();
             AppState.lastSrtFile = out.getAbsolutePath();

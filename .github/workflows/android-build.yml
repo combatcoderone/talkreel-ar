@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+      - feature/main-settings-template-workflow
+      - integration/product-readiness-media-export
       - feature/presenter-control-ui-v0.8
       - feature/snapchat-style-ar-v0.9
   pull_request:
@@ -26,10 +28,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Set up Android SDK 34
+      - name: Set up Android SDK 36
         uses: android-actions/setup-android@v3
         with:
-          packages: platform-tools platforms;android-34 build-tools;34.0.0
+          packages: platform-tools platforms;android-36 build-tools;36.0.0
       - name: Prepare temporary CI signing key
         working-directory: manual-apk
         run: |
@@ -46,12 +48,41 @@ jobs:
         run: |
           export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
           bash build.sh
-          "$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt2" dump badging app-debug.apk
-          "$ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner" verify --verbose app-debug.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging app-debug.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --verbose app-debug.apk
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: talkreel-ar-v0.9.3-apk
           path: manual-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  gradle_media3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK 36
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-36 build-tools;36.0.0
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Compile Media3-enabled Android app
+        run: gradle -p manual-apk --no-daemon assembleDebug
+      - name: Upload Media3-enabled APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: talkreel-ar-media3-debug-apk
+          path: manual-apk/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30

@@ -2,15 +2,18 @@ package com.talkreel.ar;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.ContentValues;
 import android.content.pm.PackageManager;
 import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraCaptureSession;
+import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
@@ -25,6 +28,11 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
 import android.provider.Settings;
+import android.provider.MediaStore;
+import android.widget.Spinner;
+import android.widget.ArrayAdapter;
+import android.text.InputType;
+import org.json.JSONObject;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
@@ -45,6 +53,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
 import java.util.Locale;
 
 // v0.6 professional rebuild.
@@ -54,6 +64,10 @@ import java.util.Locale;
 // the user taps Overlay. Overlay buttons only send a request,
 // they never change state here.
 public class MainActivity extends Activity {
+    private volatile ArCompositor arCompositor;
+    private volatile boolean activityDestroyed = false;
+    private volatile boolean activityResumed = false;
+    private volatile int faceDetectMode = CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF;
     private TextureView textureView;
     private ProFrameView frameView;
     private TextView statusView;
@@ -73,6 +87,8 @@ public class MainActivity extends Activity {
     private Button musicToggleButton;
     private TextView musicStatusView;
     private int scriptEditorHeight = 260;
+    private int teleprompterTextSize = 26;
+    private int selfieFrameShape = 0;
     private boolean preferFrontCamera = true;
     private int musicTrackIndex = 0;
     private boolean useMusic = false;
@@ -83,6 +99,14 @@ public class MainActivity extends Activity {
     private HandlerThread cameraThread;
     private Handler cameraHandler;
     private Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final Set<String> unavailableCameraIds = new HashSet<String>();
+    private volatile String selectedCameraId;
+    private volatile boolean waitingForCamera = false;
+    private boolean waitingToastShown = false;
+    private boolean pendingRecordWhenCameraReady = false;
+    private File pendingExportClip;
+    private CameraManager cameraManager;
+    private CameraManager.AvailabilityCallback cameraAvailabilityCallback;
     private SpeechRecognizer speechRecognizer;
     private boolean speechOn = false;
     private String currentCaptionLang = "";
@@ -147,18 +171,40 @@ public class MainActivity extends Activity {
         AppState.speed = prefs.getFloat("speed", 1.0f);
         AppState.langMode = prefs.getInt("langMode", 0);
         AppState.showFrame = prefs.getBoolean("showFrame", true);
-        AppState.arFilter = prefs.getInt("arFilter", ProFrameView.FILTER_GUIDE);
+        AppState.arFilter = Math.max(0, Math.min(ProFrameView.FILTER_COUNT - 1, prefs.getInt("arFilter", ProFrameView.FILTER_GUIDE)));
         AppState.isPro = prefs.getBoolean("isPro", false);
         AppState.textColorIndex = prefs.getInt("textColor", 0);
         AppState.captionColorIndex = prefs.getInt("captionColor", 1);
+        teleprompterTextSize = prefs.getInt("teleprompterTextSize", 26);
+        selfieFrameShape = prefs.getInt("selfieFrameShape", 0);
         musicTrackIndex = prefs.getInt("musicTrack", 0);
         scriptEditorHeight = prefs.getInt("scriptEditorHeight", 260);
         preferFrontCamera = prefs.getBoolean("faceOn", true);
         useMusic = prefs.getBoolean("useMusic", false);
-        requestPermissions(new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS}, 1);
         cameraThread = new HandlerThread("CameraThread");
         cameraThread.start();
         cameraHandler = new Handler(cameraThread.getLooper());
+        cameraManager = (CameraManager) getSystemService(CAMERA_SERVICE);
+        cameraAvailabilityCallback = new CameraManager.AvailabilityCallback() {
+            @Override public void onCameraUnavailable(String cameraId) {
+                synchronized (unavailableCameraIds) { unavailableCameraIds.add(cameraId); }
+                if (cameraId.equals(selectedCameraId) && cameraDevice == null && !cameraOpening) showCameraWaiting();
+            }
+            @Override public void onCameraAvailable(String cameraId) {
+                synchronized (unavailableCameraIds) { unavailableCameraIds.remove(cameraId); }
+                if (cameraId.equals(selectedCameraId) && waitingForCamera) {
+                    waitingForCamera = false;
+                    waitingToastShown = false;
+                    mainHandler.post(new Runnable() {
+                        public void run() {
+                            if (statusView != null) statusView.setText("Camera available · Reconnecting preview…");
+                            if (textureView != null && textureView.isAvailable() && !AppState.isRecording) openCamera();
+                        }
+                    });
+                }
+            }
+        };
+        if (cameraManager != null) cameraManager.registerAvailabilityCallback(cameraAvailabilityCallback, mainHandler);
 
         IntentFilter f = new IntentFilter();
         f.addAction(AppState.ACTION_RECORD);
@@ -182,7 +228,7 @@ public class MainActivity extends Activity {
         root.setPadding(16, 16, 16, 16);
 
         statusView = new TextView(this);
-        statusView.setText(AppState.isPro ? "Ready  Pro  " + AppState.exportLabel() : "Ready  Free  " + AppState.exportLabel());
+        statusView.setText("Preview ready · Not recording · " + AppState.exportLabel());
         statusView.setTextColor(0xFFAAAAAA);
         statusView.setTextSize(13);
         statusView.setPadding(8, 4, 8, 8);
@@ -210,10 +256,11 @@ public class MainActivity extends Activity {
         frameView = new ProFrameView(this);
         frameView.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         frameView.setFilter(AppState.arFilter);
+        frameView.setFrameShape(selfieFrameShape);
         previewBox.addView(frameView);
         root.addView(previewBox);
         TextView arNote = new TextView(this);
-        arNote.setText("AR face effects are live-preview overlays. Exported video remains on the existing camera recording path.");
+        arNote.setText("AR effects are composited by the GPU into Studio preview and recorded video. Effects use camera face rectangles, not dense facial landmarks.");
         arNote.setTextColor(0xFFAAAAAA);
         arNote.setTextSize(11);
         arNote.setPadding(8, 3, 8, 5);
@@ -234,7 +281,7 @@ public class MainActivity extends Activity {
         teleprompterView = new TextView(this);
         teleprompterView.setText(AppState.script);
         teleprompterView.setTextColor(AppState.textColor());
-        teleprompterView.setTextSize(26);
+        teleprompterView.setTextSize(teleprompterTextSize);
         teleprompterView.setLineSpacing(8, 1.35f);
         teleprompterView.setPadding(8, 8, 8, 8);
         teleprompterScroll.addView(teleprompterView);
@@ -242,7 +289,7 @@ public class MainActivity extends Activity {
 
         LinearLayout row1 = new LinearLayout(this);
         row1.setOrientation(LinearLayout.HORIZONTAL);
-        recordButton = UiStyle.primary(this, "Record");
+        recordButton = UiStyle.primary(this, "Live · Start recording");
         recordButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { if (!AppState.isRecording) startRecording(); else stopRecording(); }
         });
@@ -258,21 +305,34 @@ public class MainActivity extends Activity {
         });
         row1.addView(stopButton);
         root.addView(row1);
+        LinearLayout settingsRow = new LinearLayout(this);
+        settingsRow.setOrientation(LinearLayout.HORIZONTAL);
+        Button settingsButton = UiStyle.primary(this, "Main settings");
+        settingsButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { showMainSettings(); }
+        });
+        settingsRow.addView(settingsButton, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        Button templatesButton = UiStyle.dark(this, "Templates");
+        templatesButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { showTemplates(); }
+        });
+        settingsRow.addView(templatesButton, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        root.addView(settingsRow);
 
         LinearLayout rowPro = new LinearLayout(this);
         rowPro.setOrientation(LinearLayout.HORIZONTAL);
-        proButton = UiStyle.primary(this, AppState.isPro ? "Pro: On" : "Pro: Off");
+        proButton = UiStyle.primary(this, AppState.isPro ? "Pro preview: On" : "Pro preview: Off");
         proButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.isPro = !AppState.isPro;
-                proButton.setText(AppState.isPro ? "Pro: On" : "Pro: Off");
+                proButton.setText(AppState.isPro ? "Pro preview: On" : "Pro preview: Off");
                 savePrefs();
                 coachView.setText(ScriptCoach.shortLine(scriptEdit.getText().toString()));
                 statusView.setText(AppState.isPro ? "Pro on  " + AppState.exportLabel() : "Free  " + AppState.exportLabel());
             }
         });
         rowPro.addView(proButton);
-        Button coachButton = UiStyle.dark(this, "Coach");
+        Button coachButton = UiStyle.dark(this, "Script coach");
         coachButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.script = scriptEdit.getText().toString();
@@ -281,17 +341,17 @@ public class MainActivity extends Activity {
             }
         });
         rowPro.addView(coachButton);
-        final Button frameButton = UiStyle.dark(this, AppState.showFrame ? "Frame: On" : "Frame: Off");
+        final Button frameButton = UiStyle.dark(this, AppState.showFrame ? "Guides: On" : "Guides: Off");
         frameButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.showFrame = !AppState.showFrame;
-                frameButton.setText(AppState.showFrame ? "Frame: On" : "Frame: Off");
+                frameButton.setText(AppState.showFrame ? "Guides: On" : "Guides: Off");
                 savePrefs();
                 if (frameView != null) frameView.postInvalidate();
             }
         });
         rowPro.addView(frameButton);
-        final Button faceButton = UiStyle.dark(this, preferFrontCamera ? "Face: On" : "Face: Off");
+        final Button faceButton = UiStyle.dark(this, preferFrontCamera ? "Front camera" : "Rear camera");
         faceButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 if (AppState.isRecording) {
@@ -299,7 +359,7 @@ public class MainActivity extends Activity {
                     return;
                 }
                 preferFrontCamera = !preferFrontCamera;
-                faceButton.setText(preferFrontCamera ? "Face: On" : "Face: Off");
+                faceButton.setText(preferFrontCamera ? "Front camera" : "Rear camera");
                 savePrefs();
                 releaseCamera();
                 statusView.setText(preferFrontCamera ? "Face mode on: front camera" : "Face mode off: rear camera");
@@ -307,14 +367,15 @@ public class MainActivity extends Activity {
             }
         });
         rowPro.addView(faceButton);
-        final Button arFilterButton = UiStyle.dark(this, "AR: " + ProFrameView.filterName(AppState.arFilter));
+        final Button arFilterButton = UiStyle.dark(this, "AR effect: " + ProFrameView.filterName(AppState.arFilter));
         arFilterButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.arFilter = (AppState.arFilter + 1) % ProFrameView.FILTER_COUNT;
                 frameView.setFilter(AppState.arFilter);
-                arFilterButton.setText("AR: " + ProFrameView.filterName(AppState.arFilter));
+                if (arCompositor != null) arCompositor.setFilter(AppState.arFilter);
+                arFilterButton.setText("AR effect: " + ProFrameView.filterName(AppState.arFilter));
                 savePrefs();
-                statusView.setText("AR preview: " + ProFrameView.filterName(AppState.arFilter) + " · Guide turns effects off");
+                statusView.setText("AR effect: " + ProFrameView.filterName(AppState.arFilter) + " · Applied to preview and recording");
             }
         });
         rowPro.addView(arFilterButton);
@@ -346,12 +407,12 @@ public class MainActivity extends Activity {
             public void onClick(View v) { openSocialApp("com.zhiliaoapp.musically", "TikTok"); }
         });
         row2b.addView(tiktokButton);
-        Button clipsButton = UiStyle.dark(this, "Clips");
+        Button clipsButton = UiStyle.dark(this, "Review videos");
         clipsButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { showClips(); }
         });
         row2b.addView(clipsButton);
-        Button shareButton = UiStyle.dark(this, "Share");
+        Button shareButton = UiStyle.dark(this, "Share video");
         shareButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { shareLastClip(); }
         });
@@ -365,21 +426,21 @@ public class MainActivity extends Activity {
             public void onClick(View v) { toggleCaptions(); }
         });
         row3.addView(capButton);
-        langButton = UiStyle.dark(this, "Lang: " + AppState.langName());
+        langButton = UiStyle.dark(this, "Caption language: " + AppState.langName());
         langButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.nextLang();
-                langButton.setText("Lang: " + AppState.langName());
+                langButton.setText("Caption language: " + AppState.langName());
                 savePrefs();
                 if (speechOn) { stopCaptionListening(); startCaptionListening(); }
             }
         });
         row3.addView(langButton);
-        textColorButton = UiStyle.dark(this, "Text: " + AppState.textColorName());
+        textColorButton = UiStyle.dark(this, "Prompter color: " + AppState.textColorName());
         textColorButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.nextTextColor();
-                textColorButton.setText("Text: " + AppState.textColorName());
+                textColorButton.setText("Prompter color: " + AppState.textColorName());
                 teleprompterView.setTextColor(AppState.textColor());
                 scriptEdit.setTextColor(AppState.textColor());
                 savePrefs();
@@ -390,11 +451,11 @@ public class MainActivity extends Activity {
 
         LinearLayout row4 = new LinearLayout(this);
         row4.setOrientation(LinearLayout.HORIZONTAL);
-        captionColorButton = UiStyle.dark(this, "Caption: " + AppState.captionColorName());
+        captionColorButton = UiStyle.dark(this, "Caption color: " + AppState.captionColorName());
         captionColorButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.nextCaptionColor();
-                captionColorButton.setText("Caption: " + AppState.captionColorName());
+                captionColorButton.setText("Caption color: " + AppState.captionColorName());
                 captionView.setTextColor(AppState.captionColor());
                 savePrefs();
             }
@@ -403,24 +464,24 @@ public class MainActivity extends Activity {
         // v0.7.0: the old Sound button played synthesized beeps, the user
         // said that music was awful. It is replaced by real music, in the
         // Music section below. This button only turns music in a clip on or off.
-        musicToggleButton = UiStyle.dark(this, useMusic ? "Music: On" : "Music: Off");
+        musicToggleButton = UiStyle.dark(this, useMusic ? "Music in recording: On" : "Music in recording: Off");
         musicToggleButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 useMusic = !useMusic;
-                musicToggleButton.setText(useMusic ? "Music: On" : "Music: Off");
+                musicToggleButton.setText(useMusic ? "Music in recording: On" : "Music in recording: Off");
                 savePrefs();
                 if (!useMusic) MusicEngine.stop();
                 statusView.setText(useMusic ? "Music in clip: " + MusicCatalog.TRACKS[musicTrackIndex].title : "Music in clip: Off. See Music below.");
             }
         });
         row4.addView(musicToggleButton);
-        final Button speedButton = UiStyle.dark(this, "Speed 1x");
+        final Button speedButton = UiStyle.dark(this, "Scroll speed 1x");
         speedButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 if (AppState.speed < 1.0f) AppState.speed = 1.0f;
                 else if (AppState.speed < 1.5f) AppState.speed = 1.5f;
                 else AppState.speed = 0.5f;
-                speedButton.setText("Speed " + AppState.speed + "x");
+                speedButton.setText("Scroll speed " + AppState.speed + "x");
                 savePrefs();
             }
         });
@@ -442,12 +503,12 @@ public class MainActivity extends Activity {
         root.addView(scriptEdit);
         LinearLayout editorSizeRow = new LinearLayout(this);
         editorSizeRow.setOrientation(LinearLayout.HORIZONTAL);
-        Button editorSmaller = UiStyle.dark(this, "Editor −");
+        Button editorSmaller = UiStyle.dark(this, "Script editor −");
         editorSmaller.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { resizeScriptEditor(-60); }
         });
         editorSizeRow.addView(editorSmaller);
-        Button editorLarger = UiStyle.dark(this, "Editor +");
+        Button editorLarger = UiStyle.dark(this, "Script editor +");
         editorLarger.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { resizeScriptEditor(60); }
         });
@@ -522,7 +583,7 @@ public class MainActivity extends Activity {
                 }
             });
             musicRow.addView(downloadButton);
-            Button useButton = UiStyle.dark(this, "Use");
+            Button useButton = UiStyle.dark(this, "Select track");
             useButton.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
                     musicTrackIndex = trackIndex;
@@ -536,7 +597,9 @@ public class MainActivity extends Activity {
             musicList.addView(musicRow);
         }
         TextView musicNote = new TextView(this);
-        musicNote.setText("Sources: Pixabay Music, free, no attribution, and Kevin MacLeod, CC BY 4.0, credit required. See docs/MUSIC.md for every track, license, and link. Music plays through the speaker while you record, it is not mixed into the video file yet.");
+        musicNote.setText(isMedia3ExportAvailable()
+                ? "Download the selected track before recording. TalkReel mixes downloaded music under the microphone audio during finished-video export. Track licenses and attribution: docs/MUSIC.md."
+                : "This standalone build can preview music only. Digital mixing requires the Media3-enabled Gradle build. Track licenses: docs/MUSIC.md.");
         musicNote.setTextColor(0xFFAAAAAA);
         musicNote.setTextSize(12);
         musicNote.setPadding(8, 8, 8, 8);
@@ -549,6 +612,21 @@ public class MainActivity extends Activity {
         // Scrolling remains enabled; only scrollbar rendering is disabled.
         outer.addView(root);
         setContentView(outer);
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            getWindow().setDecorFitsSystemWindows(false);
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 35) {
+            outer.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+                public android.view.WindowInsets onApplyWindowInsets(View view, android.view.WindowInsets insets) {
+                    android.graphics.Insets bars = insets.getInsets(
+                            android.view.WindowInsets.Type.systemBars()
+                                    | android.view.WindowInsets.Type.displayCutout()
+                                    | android.view.WindowInsets.Type.ime());
+                    view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+                    return insets;
+                }
+            });
+        }
 
         textureView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
             public void onSurfaceTextureAvailable(SurfaceTexture s, int w, int h) {
@@ -556,15 +634,27 @@ public class MainActivity extends Activity {
                 // preview on the new surface. openCamera() alone
                 // returns early when cameraDevice != null, so the
                 // preview stayed black after a surface recreate.
-                if (cameraDevice != null) startPreview(); else openCamera();
+                if (cameraDevice != null && cameraHandler != null) cameraHandler.post(new Runnable() { public void run() { startPreview(); } }); else openCamera();
             }
             public void onSurfaceTextureSizeChanged(SurfaceTexture s, int w, int h) {}
             public boolean onSurfaceTextureDestroyed(SurfaceTexture s) {
-                try { if (captureSession != null) { captureSession.close(); captureSession = null; } } catch (Exception e) {}
+                if (cameraHandler != null) cameraHandler.post(new Runnable() {
+                    public void run() {
+                        try { if (captureSession != null) { captureSession.close(); captureSession = null; } } catch (Exception ignored) {}
+                        if (arCompositor != null) { try { arCompositor.stop(); } catch (Exception ignored) {} arCompositor = null; }
+                    }
+                });
                 return true;
             }
             public void onSurfaceTextureUpdated(SurfaceTexture s) {}
         });
+        // Request camera only after the main UI is attached. Microphone permission
+        // is requested on the explicit Record action, not during app startup.
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, 1);
+        } else if (textureView.isAvailable()) {
+            openCamera();
+        }
     }
 
     @Override
@@ -577,6 +667,19 @@ public class MainActivity extends Activity {
         for (int i = 0; i < permissions.length; i++) {
             if (Manifest.permission.CAMERA.equals(permissions[i]) && i < grantResults.length && grantResults[i] == PackageManager.PERMISSION_GRANTED) cameraOk = true;
         }
+        if (requestCode == 42) {
+            File clip = pendingExportClip;
+            pendingExportClip = null;
+            if (clip != null && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) exportLegacyVideoToPhone(clip);
+            else if (clip != null) Toast.makeText(this, "Storage permission denied. Video was not exported.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (requestCode == 43) {
+            boolean audioOk = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            if (audioOk) startRecording();
+            else Toast.makeText(this, "Microphone permission denied. Recording was not started.", Toast.LENGTH_LONG).show();
+            return;
+        }
         if (cameraOk) {
             mainHandler.postDelayed(new Runnable() { public void run() { openCamera(); } }, 200);
         } else {
@@ -585,8 +688,16 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onPause() {
+        activityResumed = false;
+        if (!AppState.isRecording) releaseCamera();
+        super.onPause();
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
+        activityResumed = true;
         // v0.6.1: reopen if the camera is missing for any reason,
         // not only after Instagram or YouTube. That covers the
         // first launch after the permission dialog, and a surface
@@ -611,20 +722,305 @@ public class MainActivity extends Activity {
         savePrefs();
     }
 
+    private TextView settingsLabel(String value) {
+        TextView t = new TextView(this); t.setText(value); t.setTextColor(0xFFFFFFFF);
+        t.setTextSize(13); t.setPadding(0,10,0,2); return t;
+    }
+    private int safeInt(String s, int fallback, int min, int max) {
+        try { return Math.max(min, Math.min(max, Integer.parseInt(s.trim()))); } catch(Exception e) { return fallback; }
+    }
+    private float safeFloat(String s, float fallback) {
+        try { return Math.max(0.5f, Math.min(2.0f, Float.parseFloat(s.trim()))); } catch(Exception e) { return fallback; }
+    }
+    private void applyCreatorSettings(String script, int size, int ar, int music, int shape, float speed) {
+        AppState.script = script; scriptEdit.setText(script); teleprompterView.setText(script);
+        teleprompterTextSize = size; teleprompterView.setTextSize(size);
+        AppState.arFilter = ar; frameView.setFilter(ar); if (arCompositor != null) arCompositor.setFilter(ar);
+        musicTrackIndex = Math.max(0, Math.min(music, MusicCatalog.TRACKS.length - 1));
+        selfieFrameShape = shape; frameView.setFrameShape(shape);
+        AppState.speed = speed; savePrefs();
+        if (musicToggleButton != null) musicToggleButton.setText(useMusic ? "Music in recording: On" : "Music in recording: Off");
+        statusView.setText("Settings applied · Preview ready · Not recording");
+    }
+    private void showMainSettings() {
+        final LinearLayout form = new LinearLayout(this); form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(24, 8, 24, 8);
+        final EditText script = new EditText(this); script.setText(scriptEdit.getText().toString());
+        script.setHint("Teleprompter script"); script.setMinLines(4); script.setGravity(android.view.Gravity.TOP);
+        form.addView(settingsLabel("Teleprompter text")); form.addView(script);
+        final EditText size = new EditText(this); size.setSingleLine(true); size.setInputType(InputType.TYPE_CLASS_NUMBER);
+        size.setText(String.valueOf(teleprompterTextSize)); form.addView(settingsLabel("Teleprompter text size (12–64 sp)")); form.addView(size);
+        final Spinner ar = new Spinner(this); String[] effects = new String[ProFrameView.FILTER_COUNT];
+        for(int i=0;i<effects.length;i++) effects[i]=ProFrameView.filterName(i);
+        ar.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, effects));
+        ar.setSelection(AppState.arFilter); form.addView(settingsLabel("AR / makeup effect")); form.addView(ar);
+        final Spinner music = new Spinner(this); String[] tracks = new String[MusicCatalog.TRACKS.length];
+        for(int i=0;i<tracks.length;i++) tracks[i]=MusicCatalog.TRACKS[i].title;
+        music.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, tracks));
+        music.setSelection(Math.max(0,Math.min(musicTrackIndex,tracks.length-1)));
+        form.addView(settingsLabel("Music track")); form.addView(music);
+        final Spinner shape = new Spinner(this); String[] shapes = {"Rectangle","Circle","Heart","Oval"};
+        shape.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, shapes));
+        shape.setSelection(Math.max(0,Math.min(selfieFrameShape,shapes.length-1)));
+        form.addView(settingsLabel("Selfie frame shape")); form.addView(shape);
+        final EditText speed = new EditText(this); speed.setSingleLine(true);
+        speed.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        speed.setText(String.valueOf(AppState.speed)); form.addView(settingsLabel("Teleprompter scroll speed (0.5–2.0)")); form.addView(speed);
+        new AlertDialog.Builder(this).setTitle("Main settings").setView(form)
+            .setNegativeButton("Cancel",null)
+            .setNeutralButton("Apply",(d,w)->applyCreatorSettings(script.getText().toString(),
+                safeInt(size.getText().toString(),26,12,64),ar.getSelectedItemPosition(),music.getSelectedItemPosition(),
+                shape.getSelectedItemPosition(),safeFloat(speed.getText().toString(),1.0f)))
+            .setPositiveButton("Save as template",(d,w)->{
+                applyCreatorSettings(script.getText().toString(),safeInt(size.getText().toString(),26,12,64),
+                    ar.getSelectedItemPosition(),music.getSelectedItemPosition(),shape.getSelectedItemPosition(),
+                    safeFloat(speed.getText().toString(),1.0f));
+                final EditText name = new EditText(this); name.setSingleLine(true); name.setHint("Template name");
+                new AlertDialog.Builder(this).setTitle("Save template").setView(name).setNegativeButton("Cancel",null)
+                    .setPositiveButton("Save",(dd,ww)->{
+                        String n=name.getText().toString().trim(); if(n.isEmpty()) n="My template";
+                        if ("Default".equalsIgnoreCase(n)) {
+                            Toast.makeText(this, "Default is reserved. Choose another template name.", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        try {
+                            JSONObject o=new JSONObject(); o.put("schemaVersion",1); o.put("script",AppState.script); o.put("size",teleprompterTextSize);
+                            o.put("ar",AppState.arFilter); o.put("music",musicTrackIndex); o.put("musicEnabled",useMusic); o.put("shape",selfieFrameShape); o.put("speed",AppState.speed);
+                            getSharedPreferences("talkreel_templates",MODE_PRIVATE).edit().putString("template:"+n,o.toString()).apply();
+                            Toast.makeText(this,"Template saved: "+n,Toast.LENGTH_SHORT).show();
+                        } catch(Exception e) { Toast.makeText(this,"Could not save template.",Toast.LENGTH_LONG).show(); }
+                    }).show();
+            }).show();
+    }
+    private void showTemplates() {
+        final SharedPreferences prefs = getSharedPreferences("talkreel_templates", MODE_PRIVATE);
+        final java.util.ArrayList<String> names = new java.util.ArrayList<String>();
+        names.add("Default");
+        for (String key : prefs.getAll().keySet()) {
+            if (key.startsWith("template:")) names.add(key.substring(9));
+        }
+        final String[] items = names.toArray(new String[names.size()]);
+        new AlertDialog.Builder(this).setTitle("Templates").setItems(items, (d, which) -> {
+            final String selected = items[which];
+            if ("Default".equals(selected)) {
+                new AlertDialog.Builder(this).setTitle("Default template")
+                        .setMessage("Restore the built-in starter setup?")
+                        .setNegativeButton("Cancel", null)
+                        .setPositiveButton("Apply", (dd, ww) -> {
+                            AppState.script = "";
+                            useMusic = false;
+                            applyCreatorSettings("", 26, ProFrameView.FILTER_GUIDE, 0, 0, 1.0f);
+                            savePrefs();
+                            Toast.makeText(this, "Default template applied.", Toast.LENGTH_SHORT).show();
+                        }).show();
+                return;
+            }
+            final String[] actions = {"Apply", "Update with current settings", "Duplicate", "Delete"};
+            new AlertDialog.Builder(this).setTitle(selected).setItems(actions, (ad, action) -> {
+                try {
+                    final String key = "template:" + selected;
+                    JSONObject stored = new JSONObject(prefs.getString(key, "{}"));
+                    if (action == 0) {
+                        applyCreatorSettings(stored.optString("script", AppState.script), stored.optInt("size", 26),
+                                stored.optInt("ar", 0), stored.optInt("music", 0), stored.optInt("shape", 0),
+                                (float) stored.optDouble("speed", 1.0));
+                        useMusic = stored.optBoolean("musicEnabled", false);
+                        if (musicToggleButton != null) musicToggleButton.setText(useMusic ? "Music in recording: On" : "Music in recording: Off");
+                        savePrefs();
+                    } else if (action == 1) {
+                        JSONObject updated = new JSONObject();
+                        updated.put("schemaVersion", 1);
+                        updated.put("script", scriptEdit.getText().toString());
+                        updated.put("size", teleprompterTextSize);
+                        updated.put("ar", AppState.arFilter);
+                        updated.put("music", musicTrackIndex);
+                        updated.put("musicEnabled", useMusic);
+                        updated.put("shape", selfieFrameShape);
+                        updated.put("speed", AppState.speed);
+                        prefs.edit().putString(key, updated.toString()).apply();
+                        Toast.makeText(this, "Template updated: " + selected, Toast.LENGTH_SHORT).show();
+                    } else if (action == 2) {
+                        final EditText name = new EditText(this);
+                        name.setSingleLine(true);
+                        name.setHint("New template name");
+                        new AlertDialog.Builder(this).setTitle("Duplicate " + selected).setView(name)
+                                .setNegativeButton("Cancel", null)
+                                .setPositiveButton("Duplicate", (dd, ww) -> {
+                                    String newName = name.getText().toString().trim();
+                                    if (newName.isEmpty() || "Default".equalsIgnoreCase(newName) ||
+                                            prefs.contains("template:" + newName)) {
+                                        Toast.makeText(this, "Enter a unique template name.", Toast.LENGTH_LONG).show();
+                                        return;
+                                    }
+                                    prefs.edit().putString("template:" + newName, stored.toString()).apply();
+                                    Toast.makeText(this, "Template duplicated: " + newName, Toast.LENGTH_SHORT).show();
+                                }).show();
+                    } else if (action == 3) {
+                        new AlertDialog.Builder(this).setTitle("Delete " + selected + "?")
+                                .setMessage("This cannot be undone.")
+                                .setNegativeButton("Cancel", null)
+                                .setPositiveButton("Delete", (dd, ww) -> {
+                                    prefs.edit().remove(key).apply();
+                                    Toast.makeText(this, "Template deleted.", Toast.LENGTH_SHORT).show();
+                                }).show();
+                    }
+                } catch (Exception e) {
+                    Toast.makeText(this, "Template action failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                }
+            }).setNegativeButton("Cancel", null).show();
+        }).setNegativeButton("Cancel", null).show();
+    }
+    private void showVideoReview(final File clip) {
+        if (clip == null || !clip.exists() || clip.length() == 0) return;
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(20, 12, 20, 12);
+        TextView details = new TextView(this);
+        details.setText(clip.getName() + " · " + Math.max(1, clip.length() / 1024) + " KB");
+        details.setTextSize(13);
+        panel.addView(details);
+        final android.widget.VideoView player = new android.widget.VideoView(this);
+        player.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 300));
+        panel.addView(player);
+        final AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Review video").setView(panel)
+                .setNegativeButton("Close", null)
+                .setNeutralButton("Retake", null)
+                .setPositiveButton("Export to phone", null).create();
+        dialog.setOnShowListener(new android.content.DialogInterface.OnShowListener() {
+            public void onShow(android.content.DialogInterface d) {
+                dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(new View.OnClickListener() {
+                    public void onClick(View v) {
+                        dialog.dismiss();
+                        startRecording();
+                    }
+                });
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(new View.OnClickListener() {
+                    public void onClick(View v) {
+                        dialog.dismiss();
+                        exportVideoToPhone(clip);
+                    }
+                });
+            }
+        });
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        Button discard = UiStyle.dark(this, "Discard video");
+        discard.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                new AlertDialog.Builder(MainActivity.this).setTitle("Discard this video?")
+                        .setMessage("This permanently deletes " + clip.getName() + ".")
+                        .setNegativeButton("Keep video", null)
+                        .setPositiveButton("Discard", (dd, ww) -> {
+                            if (clip.delete()) {
+                                if (clip.getAbsolutePath().equals(AppState.lastFile)) AppState.lastFile = "";
+                                dialog.dismiss();
+                                Toast.makeText(MainActivity.this, "Video discarded.", Toast.LENGTH_SHORT).show();
+                            } else Toast.makeText(MainActivity.this, "Could not delete this video.", Toast.LENGTH_LONG).show();
+                        }).show();
+            }
+        });
+        actions.addView(discard);
+        panel.addView(actions);
+        dialog.setOnDismissListener(new android.content.DialogInterface.OnDismissListener() {
+            public void onDismiss(android.content.DialogInterface d) {
+                try { player.stopPlayback(); } catch (Exception ignored) {}
+            }
+        });
+        dialog.show();
+        try {
+            Uri uri = ClipProvider.uriForFile(clip);
+            player.setVideoURI(uri);
+            player.setMediaController(new android.widget.MediaController(this));
+            player.setOnPreparedListener(new android.media.MediaPlayer.OnPreparedListener() {
+                public void onPrepared(android.media.MediaPlayer mp) { mp.setLooping(false); player.start(); }
+            });
+        } catch (Exception e) {
+            Toast.makeText(this, "Could not load video preview: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+    private void exportVideoToPhone(File clip) {
+        if(clip==null || !clip.exists() || clip.length()==0) return;
+        if(android.os.Build.VERSION.SDK_INT<29) {
+            if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                pendingExportClip = clip;
+                requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 42);
+                Toast.makeText(this, "Allow storage access to export the video.", Toast.LENGTH_LONG).show();
+                return;
+            }
+            exportLegacyVideoToPhone(clip);
+            return;
+        }
+        Uri dest=null;
+        try {
+            ContentValues v=new ContentValues(); v.put(MediaStore.Video.Media.DISPLAY_NAME,clip.getName());
+            v.put(MediaStore.Video.Media.MIME_TYPE,"video/mp4");
+            v.put(MediaStore.Video.Media.RELATIVE_PATH,Environment.DIRECTORY_MOVIES+"/TalkReelAR");
+            v.put(MediaStore.Video.Media.IS_PENDING,1);
+            dest=getContentResolver().insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,v);
+            if(dest==null) throw new IllegalStateException("Could not create destination");
+            java.io.InputStream in=new java.io.FileInputStream(clip);
+            java.io.OutputStream out=getContentResolver().openOutputStream(dest);
+            if(out==null) throw new IllegalStateException("Could not open destination");
+            byte[] buf=new byte[8192]; int n; while((n=in.read(buf))!=-1) out.write(buf,0,n);
+            in.close(); out.close(); ContentValues done=new ContentValues(); done.put(MediaStore.Video.Media.IS_PENDING,0);
+            getContentResolver().update(dest,done,null,null);
+            Toast.makeText(this,"Exported to Movies/TalkReelAR.",Toast.LENGTH_LONG).show();
+        } catch(Exception e) {
+            if(dest!=null) try { getContentResolver().delete(dest,null,null); } catch(Exception ignored) {}
+            Toast.makeText(this,"Export failed: "+e.getMessage(),Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void exportLegacyVideoToPhone(File clip) {
+        File movies = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES);
+        File dir = new File(movies, "TalkReelAR");
+        if (!dir.exists() && !dir.mkdirs()) {
+            Toast.makeText(this, "Could not create Movies/TalkReelAR.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        File dest = new File(dir, clip.getName());
+        try {
+            java.io.InputStream in = new java.io.FileInputStream(clip);
+            java.io.OutputStream out = new java.io.FileOutputStream(dest);
+            byte[] buf = new byte[8192]; int n;
+            while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+            in.close(); out.close();
+            android.media.MediaScannerConnection.scanFile(this, new String[]{dest.getAbsolutePath()}, new String[]{"video/mp4"}, null);
+            Toast.makeText(this, "Exported to Movies/TalkReelAR.", Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "Export failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void savePrefs() {
         SharedPreferences prefs = getSharedPreferences("talkreel", MODE_PRIVATE);
-        prefs.edit().putString("script", AppState.script).putFloat("speed", AppState.speed).putInt("langMode", AppState.langMode).putBoolean("showFrame", AppState.showFrame).putBoolean("isPro", AppState.isPro).putInt("textColor", AppState.textColorIndex).putInt("captionColor", AppState.captionColorIndex).putInt("musicTrack", musicTrackIndex).putBoolean("useMusic", useMusic).putInt("scriptEditorHeight", scriptEditorHeight).putBoolean("faceOn", preferFrontCamera).putInt("arFilter", AppState.arFilter).apply();
+        prefs.edit().putString("script", AppState.script).putFloat("speed", AppState.speed).putInt("langMode", AppState.langMode).putBoolean("showFrame", AppState.showFrame).putBoolean("isPro", AppState.isPro).putInt("textColor", AppState.textColorIndex).putInt("captionColor", AppState.captionColorIndex).putInt("musicTrack", musicTrackIndex).putBoolean("useMusic", useMusic).putInt("scriptEditorHeight", scriptEditorHeight).putBoolean("faceOn", preferFrontCamera).putInt("arFilter", AppState.arFilter).putInt("teleprompterTextSize", teleprompterTextSize).putInt("selfieFrameShape", selfieFrameShape).apply();
     }
 
     private void releaseCamera() {
-        try {
-            if (captureSession != null) { captureSession.close(); captureSession = null; }
-        } catch (Exception e) {}
-        try {
-            if (cameraDevice != null) { cameraDevice.close(); cameraDevice = null; }
-        } catch (Exception e) {}
-        cameraOpening = false;
         cameraReleasedForSocial = true;
+        if (cameraHandler == null) {
+            try { if (captureSession != null) captureSession.close(); } catch (Exception ignored) {}
+            captureSession = null;
+            if (arCompositor != null) { try { arCompositor.stop(); } catch (Exception ignored) {} arCompositor = null; }
+            try { if (cameraDevice != null) cameraDevice.close(); } catch (Exception ignored) {}
+            cameraDevice = null;
+            cameraOpening = false;
+            return;
+        }
+        cameraHandler.post(new Runnable() {
+            public void run() {
+                try { if (captureSession != null) captureSession.close(); } catch (Exception ignored) {}
+                captureSession = null;
+                if (arCompositor != null) {
+                    try { arCompositor.stop(); } catch (Exception ignored) {}
+                    arCompositor = null;
+                }
+                try { if (cameraDevice != null) cameraDevice.close(); } catch (Exception ignored) {}
+                cameraDevice = null;
+                cameraOpening = false;
+            }
+        });
     }
 
     private void startOverlay() {
@@ -636,13 +1032,14 @@ public class MainActivity extends Activity {
             startActivity(i);
             return;
         }
-        if (!AppState.isRecording) releaseCamera();
+        // Keep the camera session open: TalkReel's camera-first policy is
+        // first-come-first-served. If another app already owns it, we wait.
         Intent service = new Intent(this, TalkReelService.class);
         service.setAction(TalkReelService.ACTION_START_OVERLAY);
         try {
             startForegroundService(service);
             Toast.makeText(this, "Overlay on. Open Instagram or YouTube.", Toast.LENGTH_LONG).show();
-            statusView.setText("Overlay Companion on. Use the social app to record; Face mode is controlled there.");
+            statusView.setText("Overlay on · TalkReel keeps camera access if acquired first; otherwise it waits.");
         } catch (Exception e) {
             Toast.makeText(this, "Overlay failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
@@ -651,7 +1048,8 @@ public class MainActivity extends Activity {
     private void openSocialApp(String pkg, String appName) {
         AppState.script = scriptEdit.getText().toString();
         savePrefs();
-        if (!AppState.isRecording) releaseCamera();
+        // Do not voluntarily release the camera when launching a social app.
+        // The app that acquired it first keeps ownership; TalkReel waits if busy.
         String launchError = null;
         try {
             Intent launch = getPackageManager().getLaunchIntentForPackage(pkg);
@@ -684,21 +1082,29 @@ public class MainActivity extends Activity {
     }
 
     private void showClips() {
-        File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "TalkReelAR");
+        File mediaBase = getExternalFilesDir(Environment.DIRECTORY_MOVIES);
+        File dir = new File(mediaBase == null ? getFilesDir() : mediaBase, "TalkReelAR");
         File[] files = dir.listFiles();
         if (files == null || files.length == 0) {
-            statusView.setText("No clips yet");
-            Toast.makeText(this, "No clips yet. Record one first.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "No videos yet. Press Live to record your first video.", Toast.LENGTH_LONG).show();
             return;
         }
-        StringBuilder sb = new StringBuilder(files.length + " clips:\n");
-        for (File f : files) sb.append("- ").append(f.getName()).append("\n");
-        statusView.setText(sb.toString());
+        java.util.Arrays.sort(files, new java.util.Comparator<File>() {
+            public int compare(File a, File b) { return Long.compare(b.lastModified(), a.lastModified()); }
+        });
+        final File[] clips = files;
+        String[] labels = new String[clips.length];
+        for (int i=0;i<clips.length;i++) {
+            labels[i] = clips[i].getName() + " · " + Math.max(1, clips[i].length()/1024) + " KB";
+        }
+        new AlertDialog.Builder(this).setTitle("Review videos").setItems(labels,(d,which)->showVideoReview(clips[which]))
+            .setNegativeButton("Close",null).show();
     }
 
     private void shareLastClip() {
         if (AppState.lastFile == null || AppState.lastFile.isEmpty()) {
-            File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "TalkReelAR");
+            File mediaBase = getExternalFilesDir(Environment.DIRECTORY_MOVIES);
+            File dir = new File(mediaBase == null ? getFilesDir() : mediaBase, "TalkReelAR");
             File[] files = dir.listFiles();
             if (files != null && files.length > 0) {
                 java.util.Arrays.sort(files, new java.util.Comparator<File>() {
@@ -848,25 +1254,26 @@ public class MainActivity extends Activity {
     }
 
     private void togglePause() {
-        if (!AppState.isRecording) return;
-        AppState.isPaused = !AppState.isPaused;
-        pauseButton.setText(AppState.isPaused ? "Resume" : "Pause");
-        if (AppState.isPaused) {
-            if (mediaRecorder != null) { try { mediaRecorder.pause(); } catch (Exception e) {} }
-            statusView.setText("Paused");
-        } else {
-            if (mediaRecorder != null) { try { mediaRecorder.resume(); } catch (Exception e) {} }
-            statusView.setText("Resumed");
-            mainHandler.post(ticker);
+        if (!AppState.isRecording || mediaRecorder == null) return;
+        boolean pause = !AppState.isPaused;
+        try {
+            if (pause) mediaRecorder.pause();
+            else mediaRecorder.resume();
+            AppState.isPaused = pause;
+            pauseButton.setText(pause ? "Resume" : "Pause");
+            statusView.setText(pause ? "Paused" : "Recording resumed");
+            if (pause) mainHandler.removeCallbacks(ticker);
+            else mainHandler.post(ticker);
+        } catch (Exception e) {
+            Toast.makeText(this, "Could not " + (pause ? "pause" : "resume") + " recording: " +
+                    (e.getMessage() == null ? "Recorder error." : e.getMessage()), Toast.LENGTH_LONG).show();
         }
     }
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            if (!AppState.isRecording) startRecording(); else stopRecording();
-            return true;
-        }
+        // Recording starts only from the explicit Live button or Stop control.
+        // Hardware volume keys retain their normal Android behavior.
         return super.onKeyDown(keyCode, event);
     }
 
@@ -897,26 +1304,46 @@ public class MainActivity extends Activity {
                             }
                             mapped = new Rect(left, top, right, bottom);
                         } else {
-                            mapped = new Rect(r.left * vw / 1000, r.top * vh / 1000, r.right * vw / 1000, r.bottom * vh / 1000);
+                            mapped = new Rect(r.left * vw / 1000, r.top * vh / 1000,
+                                    r.right * vw / 1000, r.bottom * vh / 1000);
                         }
                         rects.add(mapped);
                     }
                     frameView.setFaces(rects);
+                    if (arCompositor != null && !rects.isEmpty()) {
+                        Rect face = rects.get(0);
+                        arCompositor.setFaceRect(face.left / (float) vw, face.top / (float) vh,
+                                face.right / (float) vw, face.bottom / (float) vh, isFrontCamera);
+                    }
                     return;
                 }
             }
             if (frameView != null) frameView.clearFaces();
+            if (arCompositor != null) arCompositor.clearFace();
         }
     };
 
+    private void showCameraWaiting() {
+        waitingForCamera = true;
+        mainHandler.post(new Runnable() {
+            public void run() {
+                if (statusView != null) statusView.setText("Camera busy · Waiting for the other app to release it");
+                if (!waitingToastShown) {
+                    waitingToastShown = true;
+                    Toast.makeText(MainActivity.this, "Camera in use by another app. TalkReel is waiting.", Toast.LENGTH_LONG).show();
+                }
+            }
+        });
+    }
+
     private void openCamera() {
         // Guard: one open at a time. This stops the open/close loop.
-        if (cameraOpening || cameraDevice != null) return;
+        if (activityDestroyed || !activityResumed || cameraOpening || cameraDevice != null) return;
         if (textureView == null || !textureView.isAvailable()) return;
         cameraOpening = true;
         cameraHandler.post(new Runnable() {
             public void run() {
-                CameraManager manager = (CameraManager) getSystemService(CAMERA_SERVICE);
+                CameraManager manager = cameraManager != null ? cameraManager : (CameraManager) getSystemService(CAMERA_SERVICE);
                 try {
                     String cameraId = null;
                     for (String id : manager.getCameraIdList()) {
@@ -925,8 +1352,24 @@ public class MainActivity extends Activity {
                         if (facing != null && facing == (preferFrontCamera ? CameraCharacteristics.LENS_FACING_FRONT : CameraCharacteristics.LENS_FACING_BACK)) { cameraId = id; break; }
                     }
                     if (cameraId == null) cameraId = manager.getCameraIdList()[0];
+                    selectedCameraId = cameraId;
+                    synchronized (unavailableCameraIds) {
+                        if (unavailableCameraIds.contains(cameraId)) {
+                            cameraOpening = false;
+                            showCameraWaiting();
+                            return;
+                        }
+                    }
                     CameraCharacteristics chars = manager.getCameraCharacteristics(cameraId);
                     activeArray = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+                    faceDetectMode = CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF;
+                    int[] faceModes = chars.get(CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES);
+                    if (faceModes != null) {
+                        for (int mode : faceModes) if (mode == CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL) faceDetectMode = mode;
+                        if (faceDetectMode == CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF) {
+                            for (int mode : faceModes) if (mode == CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE) faceDetectMode = mode;
+                        }
+                    }
                     Integer facing = chars.get(CameraCharacteristics.LENS_FACING);
                     isFrontCamera = facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT;
                     if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) { cameraOpening = false; return; }
@@ -934,26 +1377,61 @@ public class MainActivity extends Activity {
                         public void onOpened(CameraDevice camera) {
                             cameraOpening = false;
                             cameraDevice = camera;
+                            boolean wasWaiting = waitingForCamera;
+                            waitingForCamera = false;
+                            waitingToastShown = false;
+                            if (wasWaiting) mainHandler.post(new Runnable() {
+                                public void run() {
+                                    if (statusView != null) statusView.setText("Camera ready · Preview only · Not recording");
+                                    Toast.makeText(MainActivity.this, "Camera ready. TalkReel preview resumed.", Toast.LENGTH_SHORT).show();
+                                }
+                            });
                             startPreview();
+                            if (pendingRecordWhenCameraReady) {
+                                pendingRecordWhenCameraReady = false;
+                                mainHandler.postDelayed(new Runnable() {
+                                    public void run() { if (!AppState.isRecording) startRecording(); }
+                                }, 600);
+                            }
                         }
                         public void onDisconnected(CameraDevice camera) {
                             cameraOpening = false;
                             camera.close();
                             if (cameraDevice == camera) cameraDevice = null;
+                            if (arCompositor != null) { try { arCompositor.stop(); } catch (Exception ignored) {} arCompositor = null; }
                         }
                         public void onError(CameraDevice camera, int error) {
                             cameraOpening = false;
                             camera.close();
                             if (cameraDevice == camera) cameraDevice = null;
-                            mainHandler.post(new Runnable() {
-                                public void run() { statusView.setText("Camera busy. Close Instagram camera first."); }
-                            });
+                            if (arCompositor != null) { try { arCompositor.stop(); } catch (Exception ignored) {} arCompositor = null; }
+                            if (error == CameraDevice.StateCallback.ERROR_CAMERA_IN_USE || error == CameraDevice.StateCallback.ERROR_MAX_CAMERAS_IN_USE) {
+                                showCameraWaiting();
+                            } else {
+                                mainHandler.post(new Runnable() {
+                                    public void run() {
+                                        if (statusView != null) statusView.setText("Camera error · Check camera permission or device availability");
+                                        Toast.makeText(MainActivity.this, "TalkReel could not open the camera.", Toast.LENGTH_SHORT).show();
+                                    }
+                                });
+                            }
                         }
                     }, cameraHandler);
+                } catch (CameraAccessException e) {
+                    cameraOpening = false;
+                    if (e.getReason() == CameraAccessException.CAMERA_IN_USE || e.getReason() == CameraAccessException.MAX_CAMERAS_IN_USE) {
+                        showCameraWaiting();
+                    } else {
+                        mainHandler.post(new Runnable() {
+                            public void run() {
+                                if (statusView != null) statusView.setText("Camera error · " + e.getReason());
+                            }
+                        });
+                    }
                 } catch (Exception e) {
                     cameraOpening = false;
                     mainHandler.post(new Runnable() {
-                        public void run() { statusView.setText("Camera error"); }
+                        public void run() { if (statusView != null) statusView.setText("Camera error"); }
                     });
                 }
             }
@@ -961,44 +1439,86 @@ public class MainActivity extends Activity {
     }
 
     private void startPreview() {
-        try {
-            if (cameraDevice == null) return;
-            SurfaceTexture tex = textureView.getSurfaceTexture();
-            if (tex == null) return;
-            tex.setDefaultBufferSize(720, 1280);
-            Surface surface = new Surface(tex);
-            previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-            previewBuilder.addTarget(surface);
-            previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
-            cameraDevice.createCaptureSession(Arrays.asList(surface), new CameraCaptureSession.StateCallback() {
-                public void onConfigured(CameraCaptureSession session) {
-                    captureSession = session;
-                    try { session.setRepeatingRequest(previewBuilder.build(), faceCallback, cameraHandler); } catch (Exception e) {}
-                }
-                public void onConfigureFailed(CameraCaptureSession session) {}
-            }, cameraHandler);
-        } catch (Exception e) {}
-    }
-
-    private int recordWaitCount = 0;
-    private void startRecording() {
-        if (AppState.isRecording) return;
-        // v0.6.1: if the camera is not open yet, wait for it instead
-        // of starting MediaRecorder with no camera, which left the
-        // app in REC with no video. Retry up to 5 times, 400ms apart.
-        if (cameraDevice == null) {
-            openCamera();
-            if (recordWaitCount < 5) {
-                recordWaitCount++;
-                statusView.setText("Opening camera...");
-                mainHandler.postDelayed(new Runnable() { public void run() { startRecording(); } }, 400);
-                return;
-            }
-            recordWaitCount = 0;
-            Toast.makeText(this, "Camera is not ready. Close Instagram camera first, then try again.", Toast.LENGTH_LONG).show();
+        if (activityDestroyed || cameraHandler == null) return;
+        if (Looper.myLooper() != cameraHandler.getLooper()) {
+            cameraHandler.post(new Runnable() { public void run() { startPreview(); } });
             return;
         }
-        recordWaitCount = 0;
+        try {
+            if (cameraDevice == null || textureView == null) return;
+            SurfaceTexture texture = textureView.getSurfaceTexture();
+            if (texture == null) return;
+            if (arCompositor == null) arCompositor = new ArCompositor(cameraHandler);
+            Surface cameraSurface = arCompositor.start(texture, 720, 1280);
+            arCompositor.setFilter(AppState.arFilter);
+            if (captureSession != null) {
+                try { captureSession.close(); } catch (Exception ignored) {}
+                captureSession = null;
+            }
+            previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+            previewBuilder.addTarget(cameraSurface);
+            previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, faceDetectMode);
+            cameraDevice.createCaptureSession(Arrays.asList(cameraSurface), new CameraCaptureSession.StateCallback() {
+                public void onConfigured(CameraCaptureSession session) {
+                    captureSession = session;
+                    try {
+                        if (cameraDevice != null && !activityDestroyed)
+                            session.setRepeatingRequest(previewBuilder.build(), faceCallback, cameraHandler);
+                    } catch (Exception e) {
+                        mainHandler.post(new Runnable() { public void run() {
+                            if (statusView != null) statusView.setText("Camera preview could not start.");
+                        }});
+                    }
+                }
+                public void onConfigureFailed(CameraCaptureSession session) {
+                    mainHandler.post(new Runnable() { public void run() {
+                        if (statusView != null) statusView.setText("Camera preview configuration failed.");
+                    }});
+                }
+            }, cameraHandler);
+        } catch (Exception e) {
+            final String message = e.getMessage();
+            mainHandler.post(new Runnable() { public void run() {
+                if (statusView != null) statusView.setText("Preview error: " + (message == null ? "camera initialization failed" : message));
+            }});
+        }
+    }
+
+    private boolean isMedia3ExportAvailable() {
+        try {
+            Class.forName("com.talkreel.ar.Media3ExportPipeline");
+            return true;
+        } catch (Exception unavailable) {
+            return false;
+        }
+    }
+
+    private void startRecording() {
+        if (AppState.isRecording || pendingRecordWhenCameraReady) return;
+        if (useMusic && !isMedia3ExportAvailable()) {
+            Toast.makeText(this, "Digital music mixing requires the Media3-enabled Gradle build. Turn Music off or install that build.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (useMusic && (musicTrackIndex < 0 || musicTrackIndex >= MusicCatalog.TRACKS.length
+                || !MusicEngine.isDownloaded(this, MusicCatalog.TRACKS[musicTrackIndex]))) {
+            Toast.makeText(this, "Download the selected music track before recording to mix it cleanly into the finished MP4.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        MusicEngine.stop();
+        if (android.os.Build.VERSION.SDK_INT >= 23
+                && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 43);
+            Toast.makeText(this, "Microphone permission is required to record video with audio.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (cameraDevice == null) {
+            pendingRecordWhenCameraReady = true;
+            statusView.setText("Waiting for camera · Recording will start when it is ready");
+            openCamera();
+            if (waitingForCamera) showCameraWaiting();
+            return;
+        }
+        pendingRecordWhenCameraReady = true;
         AppState.script = scriptEdit.getText().toString();
         savePrefs();
         teleprompterView.setText(AppState.script);
@@ -1006,80 +1526,143 @@ public class MainActivity extends Activity {
         CaptionStore.reset();
         SilenceLog.reset();
         quietSeconds = 0;
-        // Foreground service only, no overlay. Overlay is only
-        // shown when the user taps Overlay. That was the loop.
-        Intent service = new Intent(this, TalkReelService.class);
-        service.setAction(TalkReelService.ACTION_START_SERVICE);
-        try { startForegroundService(service); } catch (Exception e) {}
+
         cameraHandler.post(new Runnable() {
             public void run() {
+                File output = null;
                 try {
-                    mediaRecorder = new MediaRecorder();
-                    mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
-                    mediaRecorder.setVideoSource(MediaRecorder.VideoSource.SURFACE);
-                    mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
-                    mediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
-                    mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
-                    mediaRecorder.setVideoSize(AppState.exportWidth(), AppState.exportHeight());
-                    mediaRecorder.setVideoFrameRate(30);
-                    File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "TalkReelAR");
-                    dir.mkdirs();
+                    if (cameraDevice == null || textureView == null || !textureView.isAvailable())
+                        throw new IllegalStateException("Camera preview is no longer available.");
+                    if (arCompositor == null) startPreview();
+                    if (arCompositor == null) throw new IllegalStateException("AR compositor is not ready.");
+                    MediaRecorder recorder = new MediaRecorder();
+                    mediaRecorder = recorder;
+                    recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+                    recorder.setVideoSource(MediaRecorder.VideoSource.SURFACE);
+                    recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+                    recorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
+                    recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+                    recorder.setVideoSize(AppState.exportWidth(), AppState.exportHeight());
+                    recorder.setVideoFrameRate(30);
+                    File mediaBase = getExternalFilesDir(Environment.DIRECTORY_MOVIES);
+                    File dir = new File(mediaBase == null ? getFilesDir() : mediaBase, "TalkReelAR");
+                    if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("Could not create recording folder.");
                     String name = "TalkReel-" + new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.US).format(new Date()) + ".mp4";
-                    File out = new File(dir, name);
-                    AppState.lastFile = out.getAbsolutePath();
-                    mediaRecorder.setOutputFile(out.getAbsolutePath());
-                    mediaRecorder.prepare();
-                    final Surface recorderSurface = mediaRecorder.getSurface();
-                    mainHandler.post(new Runnable() {
-                        public void run() {
-                            try {
-                                SurfaceTexture tex = textureView.getSurfaceTexture();
-                                if (tex == null || cameraDevice == null) return;
-                                tex.setDefaultBufferSize(AppState.exportWidth(), AppState.exportHeight());
-                                Surface previewSurface = new Surface(tex);
-                                previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
-                                previewBuilder.addTarget(previewSurface);
-                                previewBuilder.addTarget(recorderSurface);
-                                previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
-                                List<Surface> surfaces = new ArrayList<Surface>();
-                                surfaces.add(previewSurface);
-                                surfaces.add(recorderSurface);
-                                cameraDevice.createCaptureSession(surfaces, new CameraCaptureSession.StateCallback() {
-                                    public void onConfigured(CameraCaptureSession session) {
-                                        captureSession = session;
-                                        try { session.setRepeatingRequest(previewBuilder.build(), faceCallback, cameraHandler); } catch (Exception e) {}
-                                        try { mediaRecorder.start(); } catch (Exception e) {}
-                                    }
-                                    public void onConfigureFailed(CameraCaptureSession session) {}
-                                }, cameraHandler);
-                            } catch (Exception e) {}
-                        }
-                    });
-                    // v0.7.0: if music is on, play the selected track on loop
-                    // while recording. It plays through the speaker, so the
-                    // mic hears it. Stop it in stopRecording().
-                    if (useMusic && musicTrackIndex >= 0 && musicTrackIndex < MusicCatalog.TRACKS.length) {
-                        MusicEngine.play(MainActivity.this, MusicCatalog.TRACKS[musicTrackIndex], true, mainHandler, null);
+                    output = new File(dir, name);
+                    recorder.setOutputFile(output.getAbsolutePath());
+                    recorder.prepare();
+                    final File savedOutput = output;
+                    final Surface recorderSurface = recorder.getSurface();
+                    arCompositor.setFilter(AppState.arFilter);
+                    arCompositor.setEncoderSurface(recorderSurface);
+                    final Surface cameraInput = arCompositor.getCameraInputSurface();
+                    if (cameraInput == null) throw new IllegalStateException("AR camera input is unavailable.");
+                    if (captureSession != null) {
+                        try { captureSession.close(); } catch (Exception ignored) {}
+                        captureSession = null;
                     }
-                    AppState.isRecording = true;
-                    AppState.isPaused = false;
-                    AppState.seconds = 0;
-                    windowStartAt = System.currentTimeMillis();
-                    wordsInWindow = 0;
-                    mainHandler.post(new Runnable() {
-                        public void run() {
-                            recordButton.setText("Stop");
-                            statusView.setText("REC 0s  " + AppState.exportLabel());
-                            mainHandler.post(ticker);
+                    previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
+                    previewBuilder.addTarget(cameraInput);
+                    previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, faceDetectMode);
+                    cameraDevice.createCaptureSession(Arrays.asList(cameraInput), new CameraCaptureSession.StateCallback() {
+                        public void onConfigured(CameraCaptureSession session) {
+                            captureSession = session;
+                            try {
+                                if (cameraDevice == null || activityDestroyed) throw new IllegalStateException("Camera closed before recording started.");
+                                session.setRepeatingRequest(previewBuilder.build(), faceCallback, cameraHandler);
+                                mediaRecorder.start();
+                                AppState.lastFile = savedOutput.getAbsolutePath();
+                                AppState.isRecording = true;
+                                AppState.isPaused = false;
+                                AppState.seconds = 0;
+                                pendingRecordWhenCameraReady = false;
+                                windowStartAt = System.currentTimeMillis();
+                                wordsInWindow = 0;
+                                Intent service = new Intent(MainActivity.this, TalkReelService.class);
+                                service.setAction(TalkReelService.ACTION_START_SERVICE);
+                                try {
+                                    if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(service);
+                                    else startService(service);
+                                } catch (Exception ignored) {}
+                                mainHandler.post(new Runnable() {
+                                    public void run() {
+                                        if (recordButton != null) recordButton.setText("Stop recording");
+                                        if (pauseButton != null) pauseButton.setText("Pause");
+                                        if (statusView != null) statusView.setText("REC 0s  " + AppState.exportLabel());
+                                        mainHandler.removeCallbacks(ticker);
+                                        mainHandler.post(ticker);
+                                    }
+                                });
+                            } catch (final Exception e) {
+                                try { session.close(); } catch (Exception ignored) {}
+                                captureSession = null;
+                                failRecordingStart(savedOutput, e);
+                            }
                         }
-                    });
-                } catch (final Exception e) {
-                    mainHandler.post(new Runnable() {
-                        public void run() { Toast.makeText(MainActivity.this, "Record error: " + e.getMessage(), Toast.LENGTH_LONG).show(); }
-                    });
+                        public void onConfigureFailed(CameraCaptureSession session) {
+                            try { session.close(); } catch (Exception ignored) {}
+                            failRecordingStart(savedOutput, new IllegalStateException("Camera could not configure the AR recording session."));
+                        }
+                    }, cameraHandler);
+                } catch (Exception e) {
+                    failRecordingStart(output, e);
                 }
             }
         });
+    }
+
+    private void failRecordingStart(File output, final Exception error) {
+        pendingRecordWhenCameraReady = false;
+        AppState.isRecording = false;
+        AppState.isPaused = false;
+        MusicEngine.stop();
+        if (arCompositor != null) { try { arCompositor.setEncoderSurface(null); } catch (Exception ignored) {} }
+        if (mediaRecorder != null) {
+            try { mediaRecorder.reset(); } catch (Exception ignored) {}
+            try { mediaRecorder.release(); } catch (Exception ignored) {}
+            mediaRecorder = null;
+        }
+        if (output != null && output.exists()) output.delete();
+        mainHandler.post(new Runnable() {
+            public void run() {
+                if (recordButton != null) recordButton.setText("Live · Start recording");
+                if (pauseButton != null) pauseButton.setText("Pause");
+                String detail = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+                if (statusView != null) statusView.setText("Preview — not recording");
+                Toast.makeText(MainActivity.this, "Recording did not start: " + detail, Toast.LENGTH_LONG).show();
+                startPreview();
+            }
+        });
+    }
+
+
+    private void startMedia3Export(final File clip, final File music, final File srt) {
+        final Runnable showFinal = new Runnable() {
+            public void run() {
+                if (isFinishing() || isDestroyed()) return;
+                File finalClip = AppState.lastFile == null ? null : new File(AppState.lastFile);
+                showVideoReview(finalClip != null && finalClip.isFile() && finalClip.length() > 0 ? finalClip : clip);
+            }
+        };
+        final Runnable showOriginal = new Runnable() {
+            public void run() {
+                if (isFinishing() || isDestroyed()) return;
+                if (statusView != null) statusView.setText("Original recording saved. Finished export was unavailable; review the original clip.");
+                showVideoReview(clip);
+            }
+        };
+        try {
+            Class<?> pipeline = Class.forName("com.talkreel.ar.Media3ExportPipeline");
+            java.lang.reflect.Method export = pipeline.getMethod("export",
+                    android.app.Activity.class, File.class, File.class, File.class,
+                    Handler.class, Runnable.class, Runnable.class);
+            Object started = export.invoke(null, this, clip, music, srt, mainHandler, showFinal, showOriginal);
+            if (Boolean.FALSE.equals(started)) showOriginal.run();
+            else if (statusView != null) statusView.setText("Creating finished MP4 with selected music and captions…");
+        } catch (Exception unavailable) {
+            if (statusView != null) statusView.setText("Original recording saved. Advanced export is unavailable in this build.");
+            showVideoReview(clip);
+        }
     }
 
     private void stopRecording() {
@@ -1088,31 +1671,79 @@ public class MainActivity extends Activity {
             return;
         }
         MusicEngine.stop();
+        mainHandler.removeCallbacks(ticker);
         final int finalSec = AppState.seconds;
+        AppState.isRecording = false;
+        AppState.isPaused = false;
+        Intent serviceFinished = new Intent(this, TalkReelService.class);
+        serviceFinished.setAction(TalkReelService.ACTION_RECORDING_FINISHED);
+        try { startService(serviceFinished); } catch (Exception ignored) {}
         cameraHandler.post(new Runnable() {
             public void run() {
+                File clip = AppState.lastFile == null ? null : new File(AppState.lastFile);
+                boolean finalized = false;
+                String failure = null;
                 try {
-                    if (mediaRecorder != null) { mediaRecorder.stop(); mediaRecorder.reset(); mediaRecorder.release(); mediaRecorder = null; }
-                } catch (Exception e) {}
+                    if (mediaRecorder == null) throw new IllegalStateException("Recorder is unavailable.");
+                    mediaRecorder.stop();
+                    finalized = true;
+                } catch (Exception e) {
+                    failure = e.getMessage() == null ? "The MP4 could not be finalized." : e.getMessage();
+                } finally {
+                    if (arCompositor != null) {
+                        try { arCompositor.setEncoderSurface(null); } catch (Exception ignored) {}
+                    }
+                    if (mediaRecorder != null) {
+                        try { mediaRecorder.reset(); } catch (Exception ignored) {}
+                        try { mediaRecorder.release(); } catch (Exception ignored) {}
+                        mediaRecorder = null;
+                    }
+                }
+                if (captureSession != null) {
+                    try { captureSession.close(); } catch (Exception ignored) {}
+                    captureSession = null;
+                }
+                if (!finalized || clip == null || !clip.exists() || clip.length() == 0) {
+                    if (clip != null && clip.exists()) clip.delete();
+                    final String detail = failure == null ? "The output file is empty." : failure;
+                    mainHandler.post(new Runnable() {
+                        public void run() {
+                            if (recordButton != null) recordButton.setText("Live · Start recording");
+                            if (pauseButton != null) pauseButton.setText("Pause");
+                            if (statusView != null) statusView.setText("Preview — not recording");
+                            Toast.makeText(MainActivity.this, "Video could not be saved: " + detail + " Please record again.", Toast.LENGTH_LONG).show();
+                            startPreview();
+                        }
+                    });
+                    return;
+                }
                 CaptionStore.finish(finalSec);
                 SilenceLog.finish(finalSec);
-                File clip = new File(AppState.lastFile);
                 String extra = "";
-                if (AppState.isPro && clip.exists()) {
-                    File srt = CaptionStore.write(clip);
-                    File cut = SilenceLog.write(clip);
+                final File musicForExport = useMusic && musicTrackIndex >= 0 && musicTrackIndex < MusicCatalog.TRACKS.length
+                        ? MusicEngine.localFile(MainActivity.this, MusicCatalog.TRACKS[musicTrackIndex]) : null;
+                final File captionsForExport;
+                if (AppState.isPro) {
+                    captionsForExport = CaptionStore.count() > 0 ? CaptionStore.write(clip) : null;
+                    SilenceLog.write(clip);
                     extra = "  SRT: " + CaptionStore.count() + " lines. Cuts: " + SilenceLog.count() + ".";
+                } else {
+                    captionsForExport = null;
                 }
-                AppState.isRecording = false;
-                AppState.isPaused = false;
                 final String msg = extra;
                 mainHandler.post(new Runnable() {
                     public void run() {
-                        recordButton.setText("Record");
-                        pauseButton.setText("Pause");
-                        statusView.setText("Saved to Movies/TalkReelAR." + msg);
-                        Toast.makeText(MainActivity.this, "Saved to Movies/TalkReelAR", Toast.LENGTH_LONG).show();
+                        if (recordButton != null) recordButton.setText("Live · Start recording");
+                        if (pauseButton != null) pauseButton.setText("Pause");
+                        if (statusView != null) statusView.setText("Saved in TalkReel app storage. Export from Review video." + msg);
+                        Toast.makeText(MainActivity.this, "Recording saved. Review it, then export to your phone.", Toast.LENGTH_LONG).show();
                         startPreview();
+                        if ((musicForExport != null && musicForExport.isFile() && musicForExport.length() > 0)
+                                || (captionsForExport != null && captionsForExport.isFile())) {
+                            startMedia3Export(clip, musicForExport, captionsForExport);
+                        } else {
+                            showVideoReview(clip);
+                        }
                     }
                 });
             }
@@ -1121,13 +1752,49 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        activityDestroyed = true;
         super.onDestroy();
         try { unregisterReceiver(controlReceiver); } catch (Exception e) {}
         mainHandler.removeCallbacks(ticker);
         speechOn = false;
         stopCaptionListening();
         MusicEngine.stop();
+        if (cameraManager != null && cameraAvailabilityCallback != null) {
+            try { cameraManager.unregisterAvailabilityCallback(cameraAvailabilityCallback); } catch (Exception e) {}
+        }
+        pendingRecordWhenCameraReady = false;
+        if (AppState.isRecording) {
+            Intent serviceFinished = new Intent(this, TalkReelService.class);
+            serviceFinished.setAction(TalkReelService.ACTION_RECORDING_FINISHED);
+            try { startService(serviceFinished); } catch (Exception ignored) {}
+        }
+        if (cameraHandler != null) {
+            cameraHandler.post(new Runnable() {
+                public void run() {
+                    try {
+                        if (mediaRecorder != null && AppState.isRecording) mediaRecorder.stop();
+                    } catch (Exception ignored) {}
+                    AppState.isRecording = false;
+                    AppState.isPaused = false;
+                    if (arCompositor != null) {
+                        try { arCompositor.setEncoderSurface(null); } catch (Exception ignored) {}
+                    }
+                    if (mediaRecorder != null) {
+                        try { mediaRecorder.reset(); } catch (Exception ignored) {}
+                        try { mediaRecorder.release(); } catch (Exception ignored) {}
+                        mediaRecorder = null;
+                    }
+                    try { if (captureSession != null) captureSession.close(); } catch (Exception ignored) {}
+                    captureSession = null;
+                    if (arCompositor != null) {
+                        try { arCompositor.stop(); } catch (Exception ignored) {}
+                        arCompositor = null;
+                    }
+                    try { if (cameraDevice != null) cameraDevice.close(); } catch (Exception ignored) {}
+                    cameraDevice = null;
+                }
+            });
+        }
         if (cameraThread != null) cameraThread.quitSafely();
-        if (cameraDevice != null) cameraDevice.close();
     }
 }

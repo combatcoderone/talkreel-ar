@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.talkreel.ar" android:versionCode="14" android:versionName="0.9.3">
-    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="36" />
     <queries>
         <!-- Allow discovery of any installed launcher app so social buttons
              work for installed apps without sending users to an app store. -->
@@ -10,16 +10,19 @@
         </intent>
     </queries>
     <uses-feature android:name="android.hardware.camera" android:required="true" />
+    <uses-feature android:glEsVersion="0x00020000" android:required="true" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <application android:allowBackup="true" android:icon="@android:drawable/ic_menu_camera" android:label="TalkReel AR" android:theme="@style/TalkReelTheme">
+    <application android:allowBackup="true" android:icon="@drawable/talkreel_icon" android:label="TalkReel AR" android:theme="@style/TalkReelTheme">
         <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -27,6 +30,8 @@
             </intent-filter>
         </activity>
         <provider android:name=".ClipProvider" android:authorities="com.talkreel.ar.clips" android:exported="true" android:grantUriPermissions="true" />
-        <service android:name=".TalkReelService" android:exported="false" android:foregroundServiceType="camera|microphone" />
+        <service android:name=".TalkReelService" android:exported="false" android:foregroundServiceType="camera|microphone|specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-requested floating teleprompter overlay while the user works in another app; no camera or microphone capture is performed by the overlay service." />
+        </service>
     </application>
 </manifest>

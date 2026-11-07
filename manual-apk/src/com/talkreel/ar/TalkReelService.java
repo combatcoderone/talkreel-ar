@@ -39,6 +39,7 @@ public class TalkReelService extends Service {
     public static final String ACTION_START_OVERLAY = "com.talkreel.ar.START_OVERLAY";
     public static final String ACTION_STOP_ALL = "com.talkreel.ar.STOP_ALL";
     public static final String ACTION_TOGGLE_RECORD = "com.talkreel.ar.TOGGLE_RECORD";
+    public static final String ACTION_RECORDING_FINISHED = "com.talkreel.ar.RECORDING_FINISHED";
 
     private WindowManager windowManager;
     private View overlayView;
@@ -48,6 +49,7 @@ public class TalkReelService extends Service {
     private Button recButton;
     private Button pauseButton;
     private int overlayTeleHeight = 260;
+    private int overlayTextSize = 26;
     private boolean overlayScrollRunning = false;
     private Handler handler = new Handler(Looper.getMainLooper());
     private Runnable ticker = new Runnable() {
@@ -63,14 +65,13 @@ public class TalkReelService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        startForegroundNotification();
     }
 
-    private void startForegroundNotification() {
-        String channelId = "talkreel_record";
+    private void startForegroundNotification(int foregroundType) {
+        String channelId = "talkreel_activity";
         if (Build.VERSION.SDK_INT >= 26) {
-            NotificationChannel channel = new NotificationChannel(channelId, "TalkReel recording", NotificationManager.IMPORTANCE_LOW);
-            channel.setDescription("TalkReel is ready, or recording in the background.");
+            NotificationChannel channel = new NotificationChannel(channelId, "TalkReel activity", NotificationManager.IMPORTANCE_LOW);
+            channel.setDescription("Shows when TalkReel recording or the floating teleprompter is active.");
             NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
             if (nm != null) nm.createNotificationChannel(channel);
         }
@@ -79,17 +80,14 @@ public class TalkReelService extends Service {
         Notification.Builder b;
         if (Build.VERSION.SDK_INT >= 26) b = new Notification.Builder(this, channelId);
         else b = new Notification.Builder(this);
+        boolean recording = AppState.isRecording;
         Notification n = b.setContentTitle("TalkReel AR")
-            .setContentText("Tap to open TalkReel.")
+            .setContentText(recording ? "Recording is active. Tap to return to TalkReel." : "Floating teleprompter is active. Tap to return.")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(pi)
             .build();
-        // v0.6.1 fix: Android 14 requires a foreground service type
-        // when starting a foreground service. Pass camera and mic
-        // explicitly, matching the manifest, instead of the old
-        // 2-arg startForeground which can throw on Android 14.
         if (android.os.Build.VERSION.SDK_INT >= 29) {
-            startForeground(1, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA | android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+            startForeground(1, n, foregroundType);
         } else {
             startForeground(1, n);
         }
@@ -97,30 +95,64 @@ public class TalkReelService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent == null) return START_STICKY;
+        if (intent == null) {
+            stopForeground(true);
+            stopSelf();
+            return START_NOT_STICKY;
+        }
         String action = intent.getAction();
         if (ACTION_STOP_ALL.equals(action)) {
             stopOverlay();
+            stopForeground(true);
             stopSelf();
             return START_NOT_STICKY;
         }
         if (ACTION_TOGGLE_RECORD.equals(action)) {
             // Request only, MainActivity owns the result.
             sendBroadcast(new Intent(AppState.ACTION_RECORD));
-            return START_STICKY;
+            return START_NOT_STICKY;
+        }
+        if (ACTION_RECORDING_FINISHED.equals(action)) {
+            if (overlayView != null) {
+                int type = android.os.Build.VERSION.SDK_INT >= 34
+                        ? android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE : 0;
+                startForegroundNotification(type);
+                return START_NOT_STICKY;
+            }
+            stopForeground(true);
+            stopSelf();
+            return START_NOT_STICKY;
         }
         if (ACTION_START_OVERLAY.equals(action)) {
+            int type = android.os.Build.VERSION.SDK_INT >= 34
+                    ? android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE : 0;
+            if (AppState.isRecording && android.os.Build.VERSION.SDK_INT >= 34) {
+                type |= android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+                        | android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+            }
+            startForegroundNotification(type);
             showOverlay();
-            return START_STICKY;
+            if (overlayView == null) {
+                stopForeground(true);
+                stopSelf();
+            }
+            return START_NOT_STICKY;
         }
-        // ACTION_START_SERVICE: foreground only, no overlay.
-        return START_STICKY;
+        // Recording uses camera and microphone only after the user starts a clip.
+        int recordingType = android.os.Build.VERSION.SDK_INT >= 29
+                ? android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+                        | android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE : 0;
+        if (overlayView != null && android.os.Build.VERSION.SDK_INT >= 34) {
+            recordingType |= android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE;
+        }
+        startForegroundNotification(recordingType);
+        return START_NOT_STICKY;
     }
 
     private void refreshOverlayButtons() {
         if (recButton != null) recButton.setText(overlayScrollRunning ? "Pause scroll" : "Start scroll");
         if (pauseButton != null) pauseButton.setText("Reset text");
-        if (overlayTimer != null) overlayTimer.setText(overlayScrollRunning ? "PROMPTER RUNNING  ·  use social app controls to record" : "PROMPTER PAUSED  ·  use social app controls to record");
+        if (overlayTimer != null) overlayTimer.setText(overlayScrollRunning ? "Teleprompter scrolling" : "Teleprompter paused");
     }
 
     private void showOverlay() {
@@ -140,6 +172,7 @@ public class TalkReelService extends Service {
         AppState.speed = prefs.getFloat("speed", 1.0f);
         AppState.showFrame = prefs.getBoolean("showFrame", true);
         AppState.textColorIndex = prefs.getInt("textColor", 0);
+        overlayTextSize = prefs.getInt("teleprompterTextSize", 26);
 
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         if (windowManager == null) {
@@ -164,7 +197,7 @@ public class TalkReelService extends Service {
         overlayTimer.setTextSize(12);
         layout.addView(overlayTimer);
         TextView modeNote = new TextView(this);
-        modeNote.setText("COMPANION MODE  ·  Record, pause and stop with Instagram / YouTube / TikTok. Android does not let an overlay control another app's camera.");
+        modeNote.setText("Camera access is first-come, first-served. If another app owns it, TalkReel waits and notifies you.");
         modeNote.setTextColor(0xFFCCCCCC);
         modeNote.setTextSize(11);
         modeNote.setPadding(2, 4, 2, 8);
@@ -177,7 +210,7 @@ public class TalkReelService extends Service {
         overlayText = new TextView(this);
         overlayText.setText(AppState.script);
         overlayText.setTextColor(AppState.textColor());
-        overlayText.setTextSize(26);
+        overlayText.setTextSize(overlayTextSize);
         overlayText.setLineSpacing(8, 1.35f);
         overlayText.setPadding(8, 8, 8, 8);
         overlayScroll.addView(overlayText);
@@ -193,7 +226,7 @@ public class TalkReelService extends Service {
             }
         });
         row.addView(recButton);
-        pauseButton = UiStyle.dark(this, "Reset text");
+        pauseButton = UiStyle.dark(this, "Rewind");
         pauseButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 overlayScrollRunning = false;
@@ -206,54 +239,52 @@ public class TalkReelService extends Service {
 
         LinearLayout row2 = new LinearLayout(this);
         row2.setOrientation(LinearLayout.HORIZONTAL);
-        final Button textButton = UiStyle.dark(this, "Text: " + AppState.textColorName());
+        final Button textButton = UiStyle.dark(this, "Text color: " + AppState.textColorName());
         textButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.nextTextColor();
                 getSharedPreferences("talkreel", MODE_PRIVATE).edit().putInt("textColor", AppState.textColorIndex).apply();
-                textButton.setText("Text: " + AppState.textColorName());
+                textButton.setText("Text color: " + AppState.textColorName());
                 if (overlayText != null) overlayText.setTextColor(AppState.textColor());
             }
         });
         row2.addView(textButton);
-        Button smallerButton = UiStyle.dark(this, "Size −");
+        Button smallerButton = UiStyle.dark(this, "Text size −");
         smallerButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                overlayTeleHeight = Math.max(160, overlayTeleHeight - 40);
-                ViewGroup.LayoutParams p = overlayScroll.getLayoutParams();
-                p.height = overlayTeleHeight;
-                overlayScroll.setLayoutParams(p);
+                overlayTextSize = Math.max(16, overlayTextSize - 2);
+                if (overlayText != null) overlayText.setTextSize(overlayTextSize);
+                getSharedPreferences("talkreel", MODE_PRIVATE).edit().putInt("teleprompterTextSize", overlayTextSize).apply();
             }
         });
         row2.addView(smallerButton);
-        Button largerButton = UiStyle.dark(this, "Size +");
+        Button largerButton = UiStyle.dark(this, "Text size +");
         largerButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                overlayTeleHeight = Math.min(420, overlayTeleHeight + 40);
-                ViewGroup.LayoutParams p = overlayScroll.getLayoutParams();
-                p.height = overlayTeleHeight;
-                overlayScroll.setLayoutParams(p);
+                overlayTextSize = Math.min(48, overlayTextSize + 2);
+                if (overlayText != null) overlayText.setTextSize(overlayTextSize);
+                getSharedPreferences("talkreel", MODE_PRIVATE).edit().putInt("teleprompterTextSize", overlayTextSize).apply();
             }
         });
         row2.addView(largerButton);
         // v0.7.0: old Sound button played synthesized beeps. Now it plays
         // the track picked in the Music section, streamed if not downloaded.
-        final Button musicButton = UiStyle.dark(this, "Music");
+        final Button musicButton = UiStyle.dark(this, "Preview music");
         musicButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 if (MusicEngine.isPlaying()) {
                     MusicEngine.stop();
-                    musicButton.setText("Music");
+                    musicButton.setText("Preview music");
                 } else {
                     int idx = getSharedPreferences("talkreel", MODE_PRIVATE).getInt("musicTrack", 0);
                     if (idx < 0 || idx >= MusicCatalog.TRACKS.length) idx = 0;
                     MusicEngine.play(TalkReelService.this, MusicCatalog.TRACKS[idx], true, new android.os.Handler(android.os.Looper.getMainLooper()), null);
-                    musicButton.setText("Music: Playing");
+                    musicButton.setText("Music playing");
                 }
             }
         });
         row2.addView(musicButton);
-        Button close = UiStyle.dark(this, "Close");
+        Button close = UiStyle.dark(this, "Close overlay");
         close.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { stopOverlay(); }
         });
@@ -309,6 +340,10 @@ public class TalkReelService extends Service {
         if (overlayView != null && windowManager != null) {
             try { windowManager.removeView(overlayView); } catch (Exception e) {}
             overlayView = null;
+        }
+        if (!AppState.isRecording) {
+            try { stopForeground(true); } catch (Exception ignored) {}
+            stopSelf();
         }
     }
 
