@@ -1445,8 +1445,8 @@ public class MainActivity extends Activity {
             return;
         }
         MusicEngine.stop();
-        if (android.os.Build.VERSION.SDK_INT >= 23 &&
-                checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+        if (android.os.Build.VERSION.SDK_INT >= 23
+                && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 43);
             Toast.makeText(this, "Microphone permission is required to record video with audio.", Toast.LENGTH_LONG).show();
             return;
@@ -1458,7 +1458,7 @@ public class MainActivity extends Activity {
             if (waitingForCamera) showCameraWaiting();
             return;
         }
-        pendingRecordWhenCameraReady = false;
+        pendingRecordWhenCameraReady = true;
         AppState.script = scriptEdit.getText().toString();
         savePrefs();
         teleprompterView.setText(AppState.script);
@@ -1469,8 +1469,12 @@ public class MainActivity extends Activity {
 
         cameraHandler.post(new Runnable() {
             public void run() {
-                File out = null;
+                File output = null;
                 try {
+                    if (cameraDevice == null || textureView == null || !textureView.isAvailable())
+                        throw new IllegalStateException("Camera preview is no longer available.");
+                    if (arCompositor == null) startPreview();
+                    if (arCompositor == null) throw new IllegalStateException("AR compositor is not ready.");
                     MediaRecorder recorder = new MediaRecorder();
                     mediaRecorder = recorder;
                     recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
@@ -1484,72 +1488,64 @@ public class MainActivity extends Activity {
                     File dir = new File(mediaBase == null ? getFilesDir() : mediaBase, "TalkReelAR");
                     if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("Could not create recording folder.");
                     String name = "TalkReel-" + new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.US).format(new Date()) + ".mp4";
-                    out = new File(dir, name);
-                    recorder.setOutputFile(out.getAbsolutePath());
+                    output = new File(dir, name);
+                    recorder.setOutputFile(output.getAbsolutePath());
                     recorder.prepare();
-                    final File output = out;
+                    final File savedOutput = output;
                     final Surface recorderSurface = recorder.getSurface();
-                    mainHandler.post(new Runnable() {
-                        public void run() {
+                    arCompositor.setFilter(AppState.arFilter);
+                    arCompositor.setEncoderSurface(recorderSurface);
+                    final Surface cameraInput = arCompositor.getCameraInputSurface();
+                    if (cameraInput == null) throw new IllegalStateException("AR camera input is unavailable.");
+                    if (captureSession != null) {
+                        try { captureSession.close(); } catch (Exception ignored) {}
+                        captureSession = null;
+                    }
+                    previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
+                    previewBuilder.addTarget(cameraInput);
+                    previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, faceDetectMode);
+                    cameraDevice.createCaptureSession(Arrays.asList(cameraInput), new CameraCaptureSession.StateCallback() {
+                        public void onConfigured(CameraCaptureSession session) {
+                            captureSession = session;
                             try {
-                                if (cameraDevice == null || textureView == null || textureView.getSurfaceTexture() == null) {
-                                    throw new IllegalStateException("Camera preview is no longer available. Tap Live to retry.");
-                                }
-                                SurfaceTexture tex = textureView.getSurfaceTexture();
-                                tex.setDefaultBufferSize(AppState.exportWidth(), AppState.exportHeight());
-                                Surface previewSurface = new Surface(tex);
-                                previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
-                                previewBuilder.addTarget(previewSurface);
-                                previewBuilder.addTarget(recorderSurface);
-                                previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
-                                List<Surface> surfaces = new ArrayList<Surface>();
-                                surfaces.add(previewSurface);
-                                surfaces.add(recorderSurface);
-                                cameraDevice.createCaptureSession(surfaces, new CameraCaptureSession.StateCallback() {
-                                    public void onConfigured(CameraCaptureSession session) {
-                                        captureSession = session;
-                                        try {
-                                            session.setRepeatingRequest(previewBuilder.build(), faceCallback, cameraHandler);
-                                            mediaRecorder.start();
-                                            AppState.lastFile = output.getAbsolutePath();
-                                            AppState.isRecording = true;
-                                            AppState.isPaused = false;
-                                            AppState.seconds = 0;
-                                            windowStartAt = System.currentTimeMillis();
-                                            wordsInWindow = 0;
-                                            Intent service = new Intent(MainActivity.this, TalkReelService.class);
-                                            service.setAction(TalkReelService.ACTION_START_SERVICE);
-                                            try {
-                                                if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(service);
-                                                else startService(service);
-                                            } catch (Exception ignored) {}
-                                            mainHandler.post(new Runnable() {
-                                                public void run() {
-                                                    recordButton.setText("Stop recording");
-                                                    pauseButton.setText("Pause");
-                                                    statusView.setText("REC 0s  " + AppState.exportLabel());
-                                                    mainHandler.removeCallbacks(ticker);
-                                                    mainHandler.post(ticker);
-                                                }
-                                            });
-                                        } catch (final Exception e) {
-                                            try { session.close(); } catch (Exception ignored) {}
-                                            captureSession = null;
-                                            failRecordingStart(output, e);
-                                        }
+                                if (cameraDevice == null || activityDestroyed) throw new IllegalStateException("Camera closed before recording started.");
+                                session.setRepeatingRequest(previewBuilder.build(), faceCallback, cameraHandler);
+                                mediaRecorder.start();
+                                AppState.lastFile = savedOutput.getAbsolutePath();
+                                AppState.isRecording = true;
+                                AppState.isPaused = false;
+                                AppState.seconds = 0;
+                                pendingRecordWhenCameraReady = false;
+                                windowStartAt = System.currentTimeMillis();
+                                wordsInWindow = 0;
+                                Intent service = new Intent(MainActivity.this, TalkReelService.class);
+                                service.setAction(TalkReelService.ACTION_START_SERVICE);
+                                try {
+                                    if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(service);
+                                    else startService(service);
+                                } catch (Exception ignored) {}
+                                mainHandler.post(new Runnable() {
+                                    public void run() {
+                                        if (recordButton != null) recordButton.setText("Stop recording");
+                                        if (pauseButton != null) pauseButton.setText("Pause");
+                                        if (statusView != null) statusView.setText("REC 0s  " + AppState.exportLabel());
+                                        mainHandler.removeCallbacks(ticker);
+                                        mainHandler.post(ticker);
                                     }
-                                    public void onConfigureFailed(CameraCaptureSession session) {
-                                        try { session.close(); } catch (Exception ignored) {}
-                                        failRecordingStart(output, new IllegalStateException("Camera could not configure the recording session."));
-                                    }
-                                }, cameraHandler);
-                            } catch (Exception e) {
-                                failRecordingStart(output, e);
+                                });
+                            } catch (final Exception e) {
+                                try { session.close(); } catch (Exception ignored) {}
+                                captureSession = null;
+                                failRecordingStart(savedOutput, e);
                             }
                         }
-                    });
+                        public void onConfigureFailed(CameraCaptureSession session) {
+                            try { session.close(); } catch (Exception ignored) {}
+                            failRecordingStart(savedOutput, new IllegalStateException("Camera could not configure the AR recording session."));
+                        }
+                    }, cameraHandler);
                 } catch (Exception e) {
-                    failRecordingStart(out, e);
+                    failRecordingStart(output, e);
                 }
             }
         });
@@ -1560,6 +1556,7 @@ public class MainActivity extends Activity {
         AppState.isRecording = false;
         AppState.isPaused = false;
         MusicEngine.stop();
+        if (arCompositor != null) { try { arCompositor.setEncoderSurface(null); } catch (Exception ignored) {} }
         if (mediaRecorder != null) {
             try { mediaRecorder.reset(); } catch (Exception ignored) {}
             try { mediaRecorder.release(); } catch (Exception ignored) {}
