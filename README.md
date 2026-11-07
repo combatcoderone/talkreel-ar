@@ -2,7 +2,7 @@
 
 Talk, record, and post. AR teleprompter app for Reels, Shorts, and TikTok.
 
-Version: 0.8.0
+Version: 0.9.3 (integration candidate; see docs/PRODUCT-READINESS.md)
 Package: com.talkreel.ar
 Repo: combatcoderone/talkreel-ar
 Min SDK: 26 (Android 8.0), Target SDK: 34 (Android 14)
@@ -18,8 +18,7 @@ also stay on top while Instagram or YouTube records.
 
 ## What is shipped
 
-The shipped source is `manual-apk/`, plain Java, no Gradle, no Kotlin.
-That is what produced v0.7.0. See `manual-apk/build.sh`.
+The production source is `manual-apk/`, plain Java. The standalone `manual-apk/build.sh` remains a dependency-free fallback. The Media3-enabled finished-video export requires the Gradle build (`manual-apk/build.gradle`) and its AndroidX Media3 dependencies. See docs/PRODUCT-READINESS.md before treating this integration candidate as a release.
 
 `app/` is an older v0.1 Kotlin Compose prototype. It is kept for history
 only, it is NOT the shipped app, and it does not have the v0.2 to v0.7 fixes.
@@ -89,10 +88,10 @@ under the script editor. 9 real songs, from open sources, free to download.
 - Download: saves the MP3 locally, in Music/TalkReelAR on the phone, about
   2 to 5 MB per track. Nothing is downloaded unless you tap Download.
   Nothing is bundled in the APK, so the app stays small.
-- Use: picks this track for the next clip. The Music: On button at the top
-  turns music in a clip on or off. When it is on, the selected track plays
-  on loop while you record, and stops when you tap Stop. In the overlay,
-  the Music button plays or stops the picked track.
+- Use: picks this track for the next clip. Enable Music in settings and
+  download the selected track before recording. In the Gradle/Media3 build,
+  TalkReel mixes that track under microphone audio during finished-video
+  export. The overlay's Music control is a track preview control.
 
 The tracks, all verified on 2026-11-05, each file downloaded with curl and
 confirmed as a real MP3:
@@ -121,12 +120,10 @@ Full track list, page links, download links, and other free sources are in
 docs/MUSIC.md. That file also explains how to add a new track, and the rule
 that a track must be downloaded and checked first.
 
-Honest limit: music plays through the phone speaker while you record, so
-the microphone hears it. It is background music in the room, not mixed into
-the video file by an encoder. Mixing it into the file needs a video encoder
-step, planned after v0.7. If you want clean music in the exported clip, add
-the downloaded MP3 in CapCut, Instagram Edits, or YouTube Create after you
-export from TalkReel. The downloaded file is already on your phone.
+The Media3-enabled Gradle build mixes the downloaded music track into a
+finished MP4 after recording, while preserving the microphone audio. The
+standalone manual build remains a fallback and does not include this optional
+Media3 export stage. Export failure leaves the original recording intact.
 
 ### Captions and language
 
@@ -136,8 +133,9 @@ export from TalkReel. The downloaded file is already on your phone.
   French.
 - Persian and Arabic captions depend on the phone's Google speech service,
   so they need internet the first time if the offline model is not installed.
-- Captions are NOT burned into the video yet. Pro export writes an .srt
-  file beside the clip, and a -cuts.txt silence list. See Pro below.
+- Pro captions are saved as SRT and are burned into the finished MP4 by the
+  Media3-enabled Gradle export path. The standalone manual build keeps SRT
+  sidecars only. See docs/PRODUCT-READINESS.md.
 
 ### Framing, Pro, and Script Coach
 
@@ -163,11 +161,13 @@ export from TalkReel. The downloaded file is already on your phone.
 Buttons open the app directly by launch intent, never by Play Store or
 browser. If the app is not installed, the app says which one is missing.
 
-## What v0.7.0 does NOT do yet
+## Remaining product gaps
 
-- Captions are not burned into the video, SRT file only.
-- Music is not mixed into the video file, it plays through the speaker
-  while recording. See Music above.
+- Recorded AR effects are still preview-only on the settings/review branch. The GPU compositor work in PR #7 must be integrated before claiming effects are embedded in saved video.
+- Media3 music/caption export is implemented in the integration branch, but its new Gradle CI job and physical-device audio/export tests must pass before release.
+- Pro payment is not wired; the local Pro toggle is only for testing.
+- Permanent signing, privacy/legal review, music-rights review, Android instrumentation tests and physical-device QA remain release blockers.
+- See docs/PRODUCT-READINESS.md for the complete release checklist.
 - Overlay cannot change or crop Instagram's own recording. It is a frame
   on top of the other app.
 - Pro payment is not wired. The Pro toggle is for testing only.
@@ -213,7 +213,7 @@ See docs/TRUST.md.
 
 ## Build the APK
 
-Manual build, used for every release, no Gradle memory problem:
+Dependency-free manual fallback build (no Media3 digital mix or burned-in captions):
 
 ```
 cd manual-apk
@@ -223,7 +223,7 @@ export TALKREEL_KEYSTORE_PASS=your-keystore-password
 bash build.sh
 ```
 
-It uses aapt2, d8, zipalign, and apksigner from Android SDK 34, with JDK 17.
+It uses aapt2, d8, zipalign, and apksigner from Android SDK 34, with JDK 17. It intentionally excludes the optional Media3 pipeline.
 It needs a release keystore at manual-apk/release.keystore. Create your own
 keystore, never commit a keystore or a password to GitHub. The build script
 does NOT auto-generate a keystore, and does NOT contain a password.
@@ -238,6 +238,14 @@ apksigner verify --verbose app-debug.apk
 
 Expect package com.talkreel.ar, versionCode 9, versionName 0.7.0, minSdk 26,
 targetSdk 34, v2 and v3 true, v1 false, 1 signer.
+
+Media3-enabled build (required for digital music mixing and burned-in SRT captions):
+
+```
+gradle -p manual-apk --no-daemon assembleDebug
+```
+
+The resulting debug APK is a CI/test artifact, not a permanently signed production release. See docs/PRODUCT-READINESS.md for release-signing requirements.
 
 ## Backend
 
@@ -266,6 +274,7 @@ is wired in v0.7.0.
 - docs/TEST-0.6.1.md: v0.6.1 crash audit, dexdump proof, emulator attempts,
   and the 4-step phone test.
 - docs/TRUST.md: Play Protect, signing key, and why the phone warns.
+- docs/PRODUCT-READINESS.md: current production gaps, completed integration work, and release gates.
 - docs/backend-free.md: free backend hosting options.
 
 ## v0.9.0 — Snapchat-inspired AR preview effects
@@ -275,4 +284,4 @@ is wired in v0.7.0.
 - The selection persists between launches; Guide remains the default and restores the clean framing guide.
 - Existing recording, captions, teleprompter, music, overlay, clips, and sharing paths are retained.
 
-**Current limitation:** these are live preview overlays only. The existing MediaRecorder records the camera stream directly, so the AR artwork is not composited into the saved MP4. Embedding effects in exports requires a separate video-compositing/encoder pipeline; this update deliberately avoids changing that stable path.
+**Current limitation:** the settings/review branch still uses live preview overlays only. The GPU compositor implementation exists in open PR #7 but has not yet been integrated with this branch. Do not claim that AR artwork is embedded in exported recordings until that integration and device verification are complete.
