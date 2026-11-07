@@ -664,6 +664,12 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onPause() {
+        if (!AppState.isRecording) releaseCamera();
+        super.onPause();
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
         // v0.6.1: reopen if the camera is missing for any reason,
@@ -1306,7 +1312,7 @@ public class MainActivity extends Activity {
 
     private void openCamera() {
         // Guard: one open at a time. This stops the open/close loop.
-        if (cameraOpening || cameraDevice != null) return;
+        if (activityDestroyed || cameraOpening || cameraDevice != null) return;
         if (textureView == null || !textureView.isAvailable()) return;
         cameraOpening = true;
         cameraHandler.post(new Runnable() {
