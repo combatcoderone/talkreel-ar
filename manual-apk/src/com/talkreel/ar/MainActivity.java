@@ -1740,6 +1740,19 @@ public class MainActivity extends Activity {
         if (cameraHandler != null) {
             cameraHandler.post(new Runnable() {
                 public void run() {
+                    try {
+                        if (mediaRecorder != null && AppState.isRecording) mediaRecorder.stop();
+                    } catch (Exception ignored) {}
+                    AppState.isRecording = false;
+                    AppState.isPaused = false;
+                    if (arCompositor != null) {
+                        try { arCompositor.setEncoderSurface(null); } catch (Exception ignored) {}
+                    }
+                    if (mediaRecorder != null) {
+                        try { mediaRecorder.reset(); } catch (Exception ignored) {}
+                        try { mediaRecorder.release(); } catch (Exception ignored) {}
+                        mediaRecorder = null;
+                    }
                     try { if (captureSession != null) captureSession.close(); } catch (Exception ignored) {}
                     captureSession = null;
                     if (arCompositor != null) {
