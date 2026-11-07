@@ -966,14 +966,29 @@ public class MainActivity extends Activity {
     }
 
     private void releaseCamera() {
-        try {
-            if (captureSession != null) { captureSession.close(); captureSession = null; }
-        } catch (Exception e) {}
-        try {
-            if (cameraDevice != null) { cameraDevice.close(); cameraDevice = null; }
-        } catch (Exception e) {}
-        cameraOpening = false;
         cameraReleasedForSocial = true;
+        if (cameraHandler == null) {
+            try { if (captureSession != null) captureSession.close(); } catch (Exception ignored) {}
+            captureSession = null;
+            if (arCompositor != null) { try { arCompositor.stop(); } catch (Exception ignored) {} arCompositor = null; }
+            try { if (cameraDevice != null) cameraDevice.close(); } catch (Exception ignored) {}
+            cameraDevice = null;
+            cameraOpening = false;
+            return;
+        }
+        cameraHandler.post(new Runnable() {
+            public void run() {
+                try { if (captureSession != null) captureSession.close(); } catch (Exception ignored) {}
+                captureSession = null;
+                if (arCompositor != null) {
+                    try { arCompositor.stop(); } catch (Exception ignored) {}
+                    arCompositor = null;
+                }
+                try { if (cameraDevice != null) cameraDevice.close(); } catch (Exception ignored) {}
+                cameraDevice = null;
+                cameraOpening = false;
+            }
+        });
     }
 
     private void startOverlay() {
@@ -1630,6 +1645,9 @@ public class MainActivity extends Activity {
                         try { mediaRecorder.release(); } catch (Exception ignored) {}
                         mediaRecorder = null;
                     }
+                    if (arCompositor != null) {
+                        try { arCompositor.setEncoderSurface(null); } catch (Exception ignored) {}
+                    }
                 }
                 if (captureSession != null) {
                     try { captureSession.close(); } catch (Exception ignored) {}
@@ -1684,6 +1702,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        activityDestroyed = true;
         super.onDestroy();
         try { unregisterReceiver(controlReceiver); } catch (Exception e) {}
         mainHandler.removeCallbacks(ticker);
@@ -1693,8 +1712,21 @@ public class MainActivity extends Activity {
         if (cameraManager != null && cameraAvailabilityCallback != null) {
             try { cameraManager.unregisterAvailabilityCallback(cameraAvailabilityCallback); } catch (Exception e) {}
         }
-        if (cameraThread != null) cameraThread.quitSafely();
         pendingRecordWhenCameraReady = false;
-        if (cameraDevice != null) cameraDevice.close();
+        if (cameraHandler != null) {
+            cameraHandler.post(new Runnable() {
+                public void run() {
+                    try { if (captureSession != null) captureSession.close(); } catch (Exception ignored) {}
+                    captureSession = null;
+                    if (arCompositor != null) {
+                        try { arCompositor.stop(); } catch (Exception ignored) {}
+                        arCompositor = null;
+                    }
+                    try { if (cameraDevice != null) cameraDevice.close(); } catch (Exception ignored) {}
+                    cameraDevice = null;
+                }
+            });
+        }
+        if (cameraThread != null) cameraThread.quitSafely();
     }
 }
