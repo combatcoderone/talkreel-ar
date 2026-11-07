@@ -372,7 +372,7 @@ public class MainActivity extends Activity {
 
         LinearLayout pipRow = new LinearLayout(this);
         pipRow.setOrientation(LinearLayout.HORIZONTAL);
-        Button pipFrameButton = UiStyle.dark(this, "PiP frame: 9:16");
+        Button pipFrameButton = UiStyle.dark(this, "PiP frame: " + (pipAspectMode == 1 ? "1:1" : pipAspectMode == 2 ? "16:9" : "9:16"));
         pipFrameButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 pipAspectMode = (pipAspectMode + 1) % 3;
