@@ -722,14 +722,9 @@ public class MainActivity extends Activity {
         }
         ViewGroup.LayoutParams lp = previewBox.getLayoutParams();
         lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
-        if (inPip) {
-            previewBox.setBackgroundColor(0xFF000000);
-            int availableWidth = getResources().getDisplayMetrics().widthPixels;
-            float ratio = pipAspectMode == 1 ? 1.0f : pipAspectMode == 2 ? (16.0f / 9.0f) : (9.0f / 16.0f);
-            lp.height = Math.max(160, Math.round(availableWidth / ratio));
-        } else {
-            lp.height = 520;
-        }
+        // Keep the preview and face-overlay coordinate spaces identical.
+        // PiP window ratio is set separately; Android letterboxes the activity surface as needed.
+        lp.height = 520;
         previewBox.setLayoutParams(lp);
     }
 
