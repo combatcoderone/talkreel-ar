@@ -689,10 +689,10 @@ public class MainActivity extends Activity {
         AppState.script = script; scriptEdit.setText(script); teleprompterView.setText(script);
         teleprompterTextSize = size; teleprompterView.setTextSize(size);
         AppState.arFilter = ar; frameView.setFilter(ar);
-        musicTrackIndex = Math.max(0, Math.min(music, MusicCatalog.TRACKS.length - 1)); useMusic = true;
+        musicTrackIndex = Math.max(0, Math.min(music, MusicCatalog.TRACKS.length - 1));
         selfieFrameShape = shape; frameView.setFrameShape(shape);
         AppState.speed = speed; savePrefs();
-        if (musicToggleButton != null) musicToggleButton.setText("Music in recording: On");
+        if (musicToggleButton != null) musicToggleButton.setText(useMusic ? "Music in recording: On" : "Music in recording: Off");
         statusView.setText("Settings applied · Preview only · Not recording");
     }
     private void showMainSettings() {
@@ -734,7 +734,7 @@ public class MainActivity extends Activity {
                         String n=name.getText().toString().trim(); if(n.isEmpty()) n="My template";
                         try {
                             JSONObject o=new JSONObject(); o.put("script",AppState.script); o.put("size",teleprompterTextSize);
-                            o.put("ar",AppState.arFilter); o.put("music",musicTrackIndex); o.put("shape",selfieFrameShape); o.put("speed",AppState.speed);
+                            o.put("ar",AppState.arFilter); o.put("music",musicTrackIndex); o.put("musicEnabled",useMusic); o.put("shape",selfieFrameShape); o.put("speed",AppState.speed);
                             getSharedPreferences("talkreel_templates",MODE_PRIVATE).edit().putString("template:"+n,o.toString()).apply();
                             Toast.makeText(this,"Template saved: "+n,Toast.LENGTH_SHORT).show();
                         } catch(Exception e) { Toast.makeText(this,"Could not save template.",Toast.LENGTH_LONG).show(); }
@@ -752,6 +752,9 @@ public class MainActivity extends Activity {
                 JSONObject o=new JSONObject(p.getString("template:"+items[which],"{}"));
                 applyCreatorSettings(o.optString("script",AppState.script),o.optInt("size",26),o.optInt("ar",0),
                     o.optInt("music",0),o.optInt("shape",0),(float)o.optDouble("speed",1.0));
+                useMusic = o.optBoolean("musicEnabled", false);
+                if (musicToggleButton != null) musicToggleButton.setText(useMusic ? "Music in recording: On" : "Music in recording: Off");
+                savePrefs();
             } catch(Exception e) { Toast.makeText(this,"Template could not be loaded.",Toast.LENGTH_LONG).show(); }
         }).setNegativeButton("Cancel",null).show();
     }
