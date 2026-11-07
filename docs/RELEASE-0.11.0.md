@@ -73,3 +73,12 @@ still required.
 A green CI build is a compile/package check only. It is not evidence that
 camera, audio, AR tracking, gallery publishing, or social app handoff works
 on a physical device.
+
+
+## Creator workflow additions (integration branch)
+
+- Floating selfie preview is draggable, bounded to the app viewport, and resizable from 120 to 220 dp. It is implemented by resizing/translating the existing preview container; it does not reparent the camera `TextureView`.
+- System PiP supports 9:16, 1:1, and 16:9 aspect presets. PiP entry scrolls the preview into view before hiding the other controls and restores the prior scroll position on exit.
+- Music catalog search, volume adjustment, persisted user-selected audio URI, and custom audio looping for the next recording are included.
+- AR Studio uses the existing ARCore Augmented Faces renderer (front camera, 468-point mesh). The AR Studio view is preview-only; the mesh is not encoded into the saved MP4.
+- Device acceptance must include float drag/resize while scrolling, PiP enter/exit at different scroll positions, custom audio permission persistence and playback, catalog search, and regression testing for record/pause/resume/stop.
