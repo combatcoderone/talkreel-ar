@@ -1664,13 +1664,13 @@ public class MainActivity extends Activity {
                 } catch (Exception e) {
                     failure = e.getMessage() == null ? "The MP4 could not be finalized." : e.getMessage();
                 } finally {
+                    if (arCompositor != null) {
+                        try { arCompositor.setEncoderSurface(null); } catch (Exception ignored) {}
+                    }
                     if (mediaRecorder != null) {
                         try { mediaRecorder.reset(); } catch (Exception ignored) {}
                         try { mediaRecorder.release(); } catch (Exception ignored) {}
                         mediaRecorder = null;
-                    }
-                    if (arCompositor != null) {
-                        try { arCompositor.setEncoderSurface(null); } catch (Exception ignored) {}
                     }
                 }
                 if (captureSession != null) {
