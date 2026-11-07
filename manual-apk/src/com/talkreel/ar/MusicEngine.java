@@ -15,11 +15,9 @@ import java.net.URL;
 // If it is not downloaded yet, stream the download URL, so the user can
 // hear it before deciding to download. Download locally: save the MP3
 // in app-specific external Music/TalkReelAR storage, on a background thread.
-// Use in clip: play the selected track on loop while recording, stop it
-// when recording stops. The music plays through the phone speaker, so the
-// mic hears it. That is the honest limit: it is background music in the
-// room, not mixed into the video file by an encoder. Mixing it into the
-// file needs a video encoder step, planned after v0.7.
+// Studio recording uses the downloaded file for post-recording Media3
+// mixing; preview playback must be stopped before capture to avoid acoustic
+// double-capture. The overlay may still preview the track independently.
 public class MusicEngine {
     public interface Callback { void onResult(boolean ok, String message); }
 
