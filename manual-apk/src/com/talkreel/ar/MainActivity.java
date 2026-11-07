@@ -774,7 +774,7 @@ public class MainActivity extends Activity {
                 .setNegativeButton("Close", null)
                 .setNeutralButton("Retake", null)
                 .setPositiveButton("Export to phone", null).create();
-        dialog.setOnShowListener(new android.content.Dialog.DialogInterface.OnShowListener() {
+        dialog.setOnShowListener(new android.content.DialogInterface.OnShowListener() {
             public void onShow(android.content.DialogInterface d) {
                 dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(new View.OnClickListener() {
                     public void onClick(View v) {
