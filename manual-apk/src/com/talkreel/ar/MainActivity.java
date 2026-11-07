@@ -286,18 +286,18 @@ public class MainActivity extends Activity {
 
         LinearLayout rowPro = new LinearLayout(this);
         rowPro.setOrientation(LinearLayout.HORIZONTAL);
-        proButton = UiStyle.primary(this, AppState.isPro ? "Pro: On" : "Pro: Off");
+        proButton = UiStyle.primary(this, AppState.isPro ? "Pro preview: On" : "Pro preview: Off");
         proButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.isPro = !AppState.isPro;
-                proButton.setText(AppState.isPro ? "Pro: On" : "Pro: Off");
+                proButton.setText(AppState.isPro ? "Pro preview: On" : "Pro preview: Off");
                 savePrefs();
                 coachView.setText(ScriptCoach.shortLine(scriptEdit.getText().toString()));
                 statusView.setText(AppState.isPro ? "Pro on  " + AppState.exportLabel() : "Free  " + AppState.exportLabel());
             }
         });
         rowPro.addView(proButton);
-        Button coachButton = UiStyle.dark(this, "Coach");
+        Button coachButton = UiStyle.dark(this, "Script coach");
         coachButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.script = scriptEdit.getText().toString();
@@ -376,7 +376,7 @@ public class MainActivity extends Activity {
             public void onClick(View v) { showClips(); }
         });
         row2b.addView(clipsButton);
-        Button shareButton = UiStyle.dark(this, "Share");
+        Button shareButton = UiStyle.dark(this, "Share video");
         shareButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { shareLastClip(); }
         });
@@ -390,11 +390,11 @@ public class MainActivity extends Activity {
             public void onClick(View v) { toggleCaptions(); }
         });
         row3.addView(capButton);
-        langButton = UiStyle.dark(this, "Lang: " + AppState.langName());
+        langButton = UiStyle.dark(this, "Caption language: " + AppState.langName());
         langButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.nextLang();
-                langButton.setText("Lang: " + AppState.langName());
+                langButton.setText("Caption language: " + AppState.langName());
                 savePrefs();
                 if (speechOn) { stopCaptionListening(); startCaptionListening(); }
             }
@@ -467,12 +467,12 @@ public class MainActivity extends Activity {
         root.addView(scriptEdit);
         LinearLayout editorSizeRow = new LinearLayout(this);
         editorSizeRow.setOrientation(LinearLayout.HORIZONTAL);
-        Button editorSmaller = UiStyle.dark(this, "Editor −");
+        Button editorSmaller = UiStyle.dark(this, "Script editor −");
         editorSmaller.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { resizeScriptEditor(-60); }
         });
         editorSizeRow.addView(editorSmaller);
-        Button editorLarger = UiStyle.dark(this, "Editor +");
+        Button editorLarger = UiStyle.dark(this, "Script editor +");
         editorLarger.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { resizeScriptEditor(60); }
         });
@@ -547,7 +547,7 @@ public class MainActivity extends Activity {
                 }
             });
             musicRow.addView(downloadButton);
-            Button useButton = UiStyle.dark(this, "Use");
+            Button useButton = UiStyle.dark(this, "Select track");
             useButton.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
                     musicTrackIndex = trackIndex;
