@@ -262,7 +262,7 @@ public class MainActivity extends Activity {
         previewBox.addView(frameView);
         root.addView(previewBox);
         TextView arNote = new TextView(this);
-        arNote.setText("Frame FX are graphic overlays. Open AR Studio for ARCore 3D face tracking.");
+        arNote.setText("Recorded Frame FX are rendered into the MP4. Face Studio is a separate 468-point ARCore preview; its mesh is not recorded yet.");
         arNote.setTextColor(0xFFAAAAAA);
         arNote.setTextSize(11);
         arNote.setPadding(8, 3, 8, 5);
@@ -386,7 +386,7 @@ public class MainActivity extends Activity {
             public void onClick(View v) { openSocialApp("com.google.android.youtube", "YouTube"); }
         });
         row2.addView(ytButton);
-        Button arStudioButton = UiStyle.primary(this, "AR Studio");
+        Button arStudioButton = UiStyle.primary(this, "Face Studio");
         arStudioButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 if (AppState.isRecording) {
@@ -509,14 +509,14 @@ public class MainActivity extends Activity {
         // v0.7.0: the old Sound button played synthesized beeps, the user
         // said that music was awful. It is replaced by real music, in the
         // Music section below. This button only turns music in a clip on or off.
-        musicToggleButton = UiStyle.dark(this, useMusic ? "Music: On" : "Music: Off");
+        musicToggleButton = UiStyle.dark(this, useMusic ? "Music playback: On" : "Music playback: Off");
         musicToggleButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 useMusic = !useMusic;
-                musicToggleButton.setText(useMusic ? "Music: On" : "Music: Off");
+                musicToggleButton.setText(useMusic ? "Music playback: On" : "Music playback: Off");
                 savePrefs();
                 if (!useMusic) MusicEngine.stop();
-                statusView.setText(useMusic ? "Music in clip: " + MusicCatalog.TRACKS[musicTrackIndex].title : "Music in clip: Off. See Music below.");
+                statusView.setText(useMusic ? "Speaker playback during recording: " + MusicCatalog.TRACKS[musicTrackIndex].title + ". Not digitally mixed." : "Music playback off. See Music below.");
             }
         });
         row4.addView(musicToggleButton);
