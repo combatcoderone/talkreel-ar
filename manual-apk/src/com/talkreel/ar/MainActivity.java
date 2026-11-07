@@ -193,7 +193,7 @@ public class MainActivity extends Activity {
         root.setPadding(16, 16, 16, 16);
 
         statusView = new TextView(this);
-        statusView.setText(AppState.isPro ? "Ready  Pro  " + AppState.exportLabel() : "Ready  Free  " + AppState.exportLabel());
+        statusView.setText("Preview ready · Not recording · " + AppState.exportLabel());
         statusView.setTextColor(0xFFAAAAAA);
         statusView.setTextSize(13);
         statusView.setPadding(8, 4, 8, 8);
@@ -829,13 +829,19 @@ public class MainActivity extends Activity {
         File dir = new File(mediaBase == null ? getFilesDir() : mediaBase, "TalkReelAR");
         File[] files = dir.listFiles();
         if (files == null || files.length == 0) {
-            statusView.setText("No clips yet");
-            Toast.makeText(this, "No clips yet. Record one first.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "No videos yet. Press Live to record your first video.", Toast.LENGTH_LONG).show();
             return;
         }
-        StringBuilder sb = new StringBuilder(files.length + " clips:\n");
-        for (File f : files) sb.append("- ").append(f.getName()).append("\n");
-        statusView.setText(sb.toString());
+        java.util.Arrays.sort(files, new java.util.Comparator<File>() {
+            public int compare(File a, File b) { return Long.compare(b.lastModified(), a.lastModified()); }
+        });
+        final File[] clips = files;
+        String[] labels = new String[clips.length];
+        for (int i=0;i<clips.length;i++) {
+            labels[i] = clips[i].getName() + " · " + Math.max(1, clips[i].length()/1024) + " KB";
+        }
+        new AlertDialog.Builder(this).setTitle("Review videos").setItems(labels,(d,which)->showVideoReview(clips[which]))
+            .setNegativeButton("Close",null).show();
     }
 
     private void shareLastClip() {
