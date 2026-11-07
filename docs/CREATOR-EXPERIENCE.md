@@ -52,8 +52,8 @@ The in-app floating preview is the mode intended for using TalkReel's own contro
 
 1. Unity Editor compiles the AR project and the ARCore face subsystem initializes on a supported physical device.
 2. Face effects remain attached through head movement and recover after temporary tracking loss.
-3. Android PiP enters/exits without losing the camera or leaving the app in a stale UI state.
-4. PiP aspect presets persist across launches.
+3. In-app floating preview can be enabled, dragged and resized while scrolling and while recording, without interrupting the camera/recorder session.
+4. Android system PiP enters/exits without losing the camera or leaving the app in a stale UI state; aspect presets persist across launches.
 5. Music search filters every catalog row; volume affects the active MediaPlayer.
 6. Existing recording, pause/resume, captions, music selection, clip saving and sharing regression tests pass.
 7. Exported MP4 is inspected separately; preview overlays are not considered recorded until a compositing pipeline is implemented.
