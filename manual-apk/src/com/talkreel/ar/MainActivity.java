@@ -1253,9 +1253,13 @@ public class MainActivity extends Activity {
     }
 
     private void startRecording() {
-        if (AppState.isRecording) return;
-        // Keep the Live request pending until the camera is actually available.
-        // CameraManager availability callbacks resume it without rapid polling.
+        if (AppState.isRecording || pendingRecordWhenCameraReady) return;
+        if (android.os.Build.VERSION.SDK_INT >= 23 &&
+                checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 43);
+            Toast.makeText(this, "Microphone permission is required to record video with audio.", Toast.LENGTH_LONG).show();
+            return;
+        }
         if (cameraDevice == null) {
             pendingRecordWhenCameraReady = true;
             statusView.setText("Waiting for camera · Recording will start when it is ready");
@@ -1263,6 +1267,7 @@ public class MainActivity extends Activity {
             if (waitingForCamera) showCameraWaiting();
             return;
         }
+        pendingRecordWhenCameraReady = false;
         AppState.script = scriptEdit.getText().toString();
         savePrefs();
         teleprompterView.setText(AppState.script);
@@ -1270,36 +1275,36 @@ public class MainActivity extends Activity {
         CaptionStore.reset();
         SilenceLog.reset();
         quietSeconds = 0;
-        // Foreground service only, no overlay. Overlay is only
-        // shown when the user taps Overlay. That was the loop.
-        Intent service = new Intent(this, TalkReelService.class);
-        service.setAction(TalkReelService.ACTION_START_SERVICE);
-        try { startForegroundService(service); } catch (Exception e) {}
+
         cameraHandler.post(new Runnable() {
             public void run() {
+                File out = null;
                 try {
-                    mediaRecorder = new MediaRecorder();
-                    mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
-                    mediaRecorder.setVideoSource(MediaRecorder.VideoSource.SURFACE);
-                    mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
-                    mediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
-                    mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
-                    mediaRecorder.setVideoSize(AppState.exportWidth(), AppState.exportHeight());
-                    mediaRecorder.setVideoFrameRate(30);
+                    MediaRecorder recorder = new MediaRecorder();
+                    mediaRecorder = recorder;
+                    recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+                    recorder.setVideoSource(MediaRecorder.VideoSource.SURFACE);
+                    recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+                    recorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
+                    recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+                    recorder.setVideoSize(AppState.exportWidth(), AppState.exportHeight());
+                    recorder.setVideoFrameRate(30);
                     File mediaBase = getExternalFilesDir(Environment.DIRECTORY_MOVIES);
                     File dir = new File(mediaBase == null ? getFilesDir() : mediaBase, "TalkReelAR");
                     if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("Could not create recording folder.");
                     String name = "TalkReel-" + new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.US).format(new Date()) + ".mp4";
-                    File out = new File(dir, name);
-                    AppState.lastFile = out.getAbsolutePath();
-                    mediaRecorder.setOutputFile(out.getAbsolutePath());
-                    mediaRecorder.prepare();
-                    final Surface recorderSurface = mediaRecorder.getSurface();
+                    out = new File(dir, name);
+                    recorder.setOutputFile(out.getAbsolutePath());
+                    recorder.prepare();
+                    final File output = out;
+                    final Surface recorderSurface = recorder.getSurface();
                     mainHandler.post(new Runnable() {
                         public void run() {
                             try {
+                                if (cameraDevice == null || textureView == null || textureView.getSurfaceTexture() == null) {
+                                    throw new IllegalStateException("Camera preview is no longer available. Tap Live to retry.");
+                                }
                                 SurfaceTexture tex = textureView.getSurfaceTexture();
-                                if (tex == null || cameraDevice == null) return;
                                 tex.setDefaultBufferSize(AppState.exportWidth(), AppState.exportHeight());
                                 Surface previewSurface = new Surface(tex);
                                 previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
@@ -1312,37 +1317,75 @@ public class MainActivity extends Activity {
                                 cameraDevice.createCaptureSession(surfaces, new CameraCaptureSession.StateCallback() {
                                     public void onConfigured(CameraCaptureSession session) {
                                         captureSession = session;
-                                        try { session.setRepeatingRequest(previewBuilder.build(), faceCallback, cameraHandler); } catch (Exception e) {}
-                                        try { mediaRecorder.start(); } catch (Exception e) {}
+                                        try {
+                                            session.setRepeatingRequest(previewBuilder.build(), faceCallback, cameraHandler);
+                                            mediaRecorder.start();
+                                            AppState.lastFile = output.getAbsolutePath();
+                                            AppState.isRecording = true;
+                                            AppState.isPaused = false;
+                                            AppState.seconds = 0;
+                                            windowStartAt = System.currentTimeMillis();
+                                            wordsInWindow = 0;
+                                            Intent service = new Intent(MainActivity.this, TalkReelService.class);
+                                            service.setAction(TalkReelService.ACTION_START_SERVICE);
+                                            try {
+                                                if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(service);
+                                                else startService(service);
+                                            } catch (Exception ignored) {}
+                                            if (useMusic && musicTrackIndex >= 0 && musicTrackIndex < MusicCatalog.TRACKS.length) {
+                                                MusicEngine.play(MainActivity.this, MusicCatalog.TRACKS[musicTrackIndex], true, mainHandler, null);
+                                            }
+                                            mainHandler.post(new Runnable() {
+                                                public void run() {
+                                                    recordButton.setText("Stop recording");
+                                                    pauseButton.setText("Pause");
+                                                    statusView.setText("REC 0s  " + AppState.exportLabel());
+                                                    mainHandler.removeCallbacks(ticker);
+                                                    mainHandler.post(ticker);
+                                                }
+                                            });
+                                        } catch (final Exception e) {
+                                            try { session.close(); } catch (Exception ignored) {}
+                                            captureSession = null;
+                                            failRecordingStart(output, e);
+                                        }
                                     }
-                                    public void onConfigureFailed(CameraCaptureSession session) {}
+                                    public void onConfigureFailed(CameraCaptureSession session) {
+                                        try { session.close(); } catch (Exception ignored) {}
+                                        failRecordingStart(output, new IllegalStateException("Camera could not configure the recording session."));
+                                    }
                                 }, cameraHandler);
-                            } catch (Exception e) {}
+                            } catch (Exception e) {
+                                failRecordingStart(output, e);
+                            }
                         }
                     });
-                    // v0.7.0: if music is on, play the selected track on loop
-                    // while recording. It plays through the speaker, so the
-                    // mic hears it. Stop it in stopRecording().
-                    if (useMusic && musicTrackIndex >= 0 && musicTrackIndex < MusicCatalog.TRACKS.length) {
-                        MusicEngine.play(MainActivity.this, MusicCatalog.TRACKS[musicTrackIndex], true, mainHandler, null);
-                    }
-                    AppState.isRecording = true;
-                    AppState.isPaused = false;
-                    AppState.seconds = 0;
-                    windowStartAt = System.currentTimeMillis();
-                    wordsInWindow = 0;
-                    mainHandler.post(new Runnable() {
-                        public void run() {
-                            recordButton.setText("Stop recording");
-                            statusView.setText("REC 0s  " + AppState.exportLabel());
-                            mainHandler.post(ticker);
-                        }
-                    });
-                } catch (final Exception e) {
-                    mainHandler.post(new Runnable() {
-                        public void run() { Toast.makeText(MainActivity.this, "Record error: " + e.getMessage(), Toast.LENGTH_LONG).show(); }
-                    });
+                } catch (Exception e) {
+                    failRecordingStart(out, e);
                 }
+            }
+        });
+    }
+
+    private void failRecordingStart(File output, final Exception error) {
+        pendingRecordWhenCameraReady = false;
+        AppState.isRecording = false;
+        AppState.isPaused = false;
+        MusicEngine.stop();
+        if (mediaRecorder != null) {
+            try { mediaRecorder.reset(); } catch (Exception ignored) {}
+            try { mediaRecorder.release(); } catch (Exception ignored) {}
+            mediaRecorder = null;
+        }
+        if (output != null && output.exists()) output.delete();
+        mainHandler.post(new Runnable() {
+            public void run() {
+                if (recordButton != null) recordButton.setText("Live · Start recording");
+                if (pauseButton != null) pauseButton.setText("Pause");
+                String detail = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+                if (statusView != null) statusView.setText("Preview — not recording");
+                Toast.makeText(MainActivity.this, "Recording did not start: " + detail, Toast.LENGTH_LONG).show();
+                startPreview();
             }
         });
     }
