@@ -31,6 +31,7 @@ import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
@@ -64,6 +65,10 @@ public class MainActivity extends Activity {
     private LinearLayout contentRoot;
     private SafeScrollView outerScroll;
     private int pipAspectMode = 0; // 0=9:16, 1=1:1, 2=16:9
+    private boolean floatingPreview = false;
+    private int floatingPreviewWidthDp = 150;
+    private float floatingPreviewX = -1f;
+    private float floatingPreviewY = 88f;
     private int faceDetectMode = CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF;
     private ProFrameView frameView;
     private TextView statusView;
@@ -159,6 +164,10 @@ public class MainActivity extends Activity {
         AppState.showFrame = prefs.getBoolean("showFrame", true);
         AppState.arFilter = prefs.getInt("arFilter", ProFrameView.FILTER_GUIDE);
         pipAspectMode = prefs.getInt("pipAspectMode", 0);
+        floatingPreview = prefs.getBoolean("floatingPreview", false);
+        floatingPreviewWidthDp = Math.max(120, Math.min(220, prefs.getInt("floatingPreviewWidthDp", 150)));
+        floatingPreviewX = prefs.getFloat("floatingPreviewX", -1f);
+        floatingPreviewY = prefs.getFloat("floatingPreviewY", 88f);
         AppState.isPro = prefs.getBoolean("isPro", false);
         AppState.textColorIndex = prefs.getInt("textColor", 0);
         AppState.captionColorIndex = prefs.getInt("captionColor", 1);
@@ -383,7 +392,27 @@ public class MainActivity extends Activity {
             }
         });
         pipRow.addView(pipFrameButton);
-        Button enterPipButton = UiStyle.primary(this, "Use PiP");
+        Button floatPreviewButton = UiStyle.primary(this, floatingPreview ? "Float: On" : "Float selfie");
+        floatPreviewButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                floatingPreview = !floatingPreview;
+                floatPreviewButton.setText(floatingPreview ? "Float: On" : "Float selfie");
+                setFloatingPreview(floatingPreview);
+                savePrefs();
+            }
+        });
+        pipRow.addView(floatPreviewButton);
+        Button previewSmaller = UiStyle.dark(this, "Frame −");
+        previewSmaller.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { resizeFloatingPreview(-20); }
+        });
+        pipRow.addView(previewSmaller);
+        Button previewLarger = UiStyle.dark(this, "Frame +");
+        previewLarger.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { resizeFloatingPreview(20); }
+        });
+        pipRow.addView(previewLarger);
+        Button enterPipButton = UiStyle.primary(this, "System PiP");
         enterPipButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { enterSelfiePip(); }
         });
@@ -623,6 +652,14 @@ public class MainActivity extends Activity {
         // Scrolling remains enabled; only scrollbar rendering is disabled.
         outer.addView(root);
         setContentView(outer);
+        outer.setOnScrollChangeListener(new View.OnScrollChangeListener() {
+            public void onScrollChange(View v, int scrollX, int scrollY, int oldScrollX, int oldScrollY) {
+                if (floatingPreview) updateFloatingPreviewPosition();
+            }
+        });
+        if (floatingPreview) {
+            previewBox.post(new Runnable() { public void run() { setFloatingPreview(true); } });
+        }
 
         textureView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
             public void onSurfaceTextureAvailable(SurfaceTexture s, int w, int h) {
@@ -685,6 +722,74 @@ public class MainActivity extends Activity {
         savePrefs();
     }
 
+    private int dp(float value) { return Math.round(value * getResources().getDisplayMetrics().density); }
+
+    private void setFloatingPreview(boolean enabled) {
+        if (previewBox == null) return;
+        floatingPreview = enabled;
+        ViewGroup.LayoutParams lp = previewBox.getLayoutParams();
+        if (enabled) {
+            lp.width = dp(floatingPreviewWidthDp);
+            lp.height = Math.round(dp(floatingPreviewWidthDp) * (16.0f / 9.0f));
+            previewBox.setElevation(dp(16));
+            previewBox.setBackgroundColor(0xFF101010);
+            previewBox.setOnTouchListener(new View.OnTouchListener() {
+                private float startRawX, startRawY, startX, startY;
+                public boolean onTouch(View view, MotionEvent event) {
+                    if (!floatingPreview) return false;
+                    if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                        startRawX = event.getRawX(); startRawY = event.getRawY();
+                        startX = floatingPreviewX; startY = floatingPreviewY;
+                        return true;
+                    }
+                    if (event.getAction() == MotionEvent.ACTION_MOVE) {
+                        floatingPreviewX = startX + event.getRawX() - startRawX;
+                        floatingPreviewY = startY + event.getRawY() - startRawY;
+                        updateFloatingPreviewPosition();
+                        return true;
+                    }
+                    if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
+                        updateFloatingPreviewPosition(); savePrefs(); return true;
+                    }
+                    return true;
+                }
+            });
+            previewBox.post(new Runnable() { public void run() { updateFloatingPreviewPosition(); } });
+        } else {
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            lp.height = 520;
+            previewBox.setElevation(0f);
+            previewBox.setTranslationX(0f);
+            previewBox.setTranslationY(0f);
+            previewBox.setOnTouchListener(null);
+        }
+        previewBox.setLayoutParams(lp);
+    }
+
+    private void updateFloatingPreviewPosition() {
+        if (!floatingPreview || previewBox == null || outerScroll == null) return;
+        int width = dp(floatingPreviewWidthDp);
+        int height = Math.round(width * (16.0f / 9.0f));
+        int viewportWidth = outerScroll.getWidth() > 0 ? outerScroll.getWidth() : getResources().getDisplayMetrics().widthPixels;
+        int viewportHeight = outerScroll.getHeight() > 0 ? outerScroll.getHeight() : getResources().getDisplayMetrics().heightPixels;
+        if (floatingPreviewX < 0f) floatingPreviewX = viewportWidth - width - dp(12);
+        floatingPreviewX = Math.max(dp(8), Math.min(floatingPreviewX, viewportWidth - width - dp(8)));
+        floatingPreviewY = Math.max(dp(8), Math.min(floatingPreviewY, viewportHeight - height - dp(8)));
+        previewBox.setTranslationX(floatingPreviewX - previewBox.getLeft());
+        previewBox.setTranslationY(outerScroll.getScrollY() + floatingPreviewY - previewBox.getTop());
+    }
+
+    private void resizeFloatingPreview(int deltaDp) {
+        floatingPreviewWidthDp = Math.max(120, Math.min(220, floatingPreviewWidthDp + deltaDp));
+        if (!floatingPreview) {
+            floatingPreview = true;
+            setFloatingPreview(true);
+        } else {
+            setFloatingPreview(true);
+        }
+        savePrefs();
+    }
+
     private void updatePipParams() {
         if (android.os.Build.VERSION.SDK_INT < 26) return;
         try {
@@ -730,7 +835,7 @@ public class MainActivity extends Activity {
 
     private void savePrefs() {
         SharedPreferences prefs = getSharedPreferences("talkreel", MODE_PRIVATE);
-        prefs.edit().putString("script", AppState.script).putFloat("speed", AppState.speed).putInt("langMode", AppState.langMode).putBoolean("showFrame", AppState.showFrame).putBoolean("isPro", AppState.isPro).putInt("textColor", AppState.textColorIndex).putInt("captionColor", AppState.captionColorIndex).putInt("musicTrack", musicTrackIndex).putBoolean("useMusic", useMusic).putInt("scriptEditorHeight", scriptEditorHeight).putBoolean("faceOn", preferFrontCamera) .putInt("arFilter", AppState.arFilter).putInt("pipAspectMode", pipAspectMode).apply();
+        prefs.edit().putString("script", AppState.script).putFloat("speed", AppState.speed).putInt("langMode", AppState.langMode).putBoolean("showFrame", AppState.showFrame).putBoolean("isPro", AppState.isPro).putInt("textColor", AppState.textColorIndex).putInt("captionColor", AppState.captionColorIndex).putInt("musicTrack", musicTrackIndex).putBoolean("useMusic", useMusic).putInt("scriptEditorHeight", scriptEditorHeight).putBoolean("faceOn", preferFrontCamera) .putInt("arFilter", AppState.arFilter).putInt("pipAspectMode", pipAspectMode).putBoolean("floatingPreview", floatingPreview).putInt("floatingPreviewWidthDp", floatingPreviewWidthDp).putFloat("floatingPreviewX", floatingPreviewX).putFloat("floatingPreviewY", floatingPreviewY).apply();
     }
 
     private void releaseCamera() {
