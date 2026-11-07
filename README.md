@@ -284,4 +284,4 @@ is wired in v0.7.0.
 - The selection persists between launches; Guide remains the default and restores the clean framing guide.
 - Existing recording, captions, teleprompter, music, overlay, clips, and sharing paths are retained.
 
-**Current limitation:** the settings/review branch still uses live preview overlays only. The GPU compositor implementation exists in open PR #7 but has not yet been integrated with this branch. Do not claim that AR artwork is embedded in exported recordings until that integration and device verification are complete.
+**Integration candidate:** this branch now routes Camera2 frames through an OpenGL ES compositor and renders the selected shader effect to both the Studio preview and MediaRecorder encoder surface. The compositor uses device-provided face rectangles and stylized overlays, not dense facial landmarks or segmentation. CI compilation and physical-device verification are still required; do not treat this as a released, device-validated feature yet.
