@@ -59,6 +59,7 @@ public class ProFrameView extends View {
         drawSelfieFrame(c,w,h);
     }
     private void drawSelfieFrame(Canvas c,int w,int h) {
+        p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(3); p.setColor(Color.argb(145,255,255,255));
             float cx=w/2f, cy=h*.43f, fw=w*.66f, fh=h*.66f;
             RectF frame=new RectF(cx-fw/2f,cy-fh/2f,cx+fw/2f,cy+fh/2f);
             if(frameShape==1) c.drawOval(frame,p);
