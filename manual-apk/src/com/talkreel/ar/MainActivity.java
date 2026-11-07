@@ -644,6 +644,7 @@ public class MainActivity extends Activity {
                 public void onClick(View v) {
                     musicTrackIndex = trackIndex;
                     customMusicUri = null;
+                    MusicEngine.stop();
                     if (customMusicButton != null) customMusicButton.setText("Add audio from phone");
                     useMusic = true;
                     if (musicToggleButton != null) musicToggleButton.setText("Music: On");
@@ -668,7 +669,7 @@ public class MainActivity extends Activity {
             public void afterTextChanged(Editable s) {}
         });
         TextView musicNote = new TextView(this);
-        musicNote.setText("Sources: Pixabay Music, free, no attribution, and Kevin MacLeod, CC BY 4.0, credit required. See docs/MUSIC.md for every track, license, and link. Music plays through the speaker while you record, it is not mixed into the video file yet.");
+        musicNote.setText("Sources: Pixabay Music and Kevin MacLeod (CC BY 4.0; credit required). You can also import your own audio file. Only use music you have rights to use. Current playback comes through the phone speaker and is not mixed into the exported video yet.");
         musicNote.setTextColor(0xFFAAAAAA);
         musicNote.setTextSize(12);
         musicNote.setPadding(8, 8, 8, 8);
