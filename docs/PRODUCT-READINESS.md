@@ -28,7 +28,7 @@ It is not a claim that the app is ready for public distribution.
 | Music rights | **Needs legal/product review** | Keep the license and attribution record for every track, verify commercial-use and redistribution restrictions, and provide required attribution in the exported/share flow for CC BY tracks. A track's availability on a free-music site is not a blanket license for every use. |
 | Automated Android tests | **Insufficient** | Add unit tests for settings/template persistence, SRT parsing/timing, export fallback, media naming and file handling, plus instrumentation tests for camera lifecycle and MediaStore export. CI compilation alone is not functional validation. |
 | Accessibility and UX | **Not verified** | Test TalkBack, touch target sizes, contrast, font scaling, landscape/large-screen behavior, error recovery and permission explanations. |
-| Store/distribution readiness | **Not complete** | Both build paths now target Android 16 / API 36, the current Google Play submission requirement. Still validate Android 16 behavior, app listing/assets, content rating, support contact, crash reporting, staged rollout and rollback plan. |
+| Store/distribution readiness | **Not complete** | Both build paths target Android 16 / API 36. The overlay now declares a `specialUse` foreground-service subtype; complete the Play Console foreground-service declaration and provide the required demo evidence. Also finish app listing/assets, content rating, support contact, crash reporting, staged rollout and rollback plan. |
 | Overlay limitations | **Platform constraint** | The floating overlay cannot show TalkReel's live camera while Instagram/YouTube/TikTok owns the camera. Keep the live preview in TalkReel Studio and describe the overlay as a teleprompter companion only. |
 
 ## Known technical boundaries
@@ -36,7 +36,7 @@ It is not a claim that the app is ready for public distribution.
 - The Media3 export path is an offline post-recording transformation. It does not mix the audio live while recording.
 - The selected music file must be downloaded before recording. A missing file prevents recording when music is enabled rather than silently recording an empty music track.
 - The standalone `manual-apk/build.sh` intentionally excludes `Media3ExportPipeline.java`; it remains a dependency-free fallback and does not offer digital music mix/caption burn-in. The AR compositor is included in both build paths.
-- The floating overlay cannot take ownership of another app's camera or control its recording session.
+- The floating overlay cannot take ownership of another app's camera or control its recording session. Its foreground service uses the Android `specialUse` type only while the user-requested overlay is visible; recording uses camera/microphone types.
 - The existing Pro flag is a local testing switch, not a purchase entitlement.
 - No physical-device validation is represented by a successful GitHub Actions build.
 
