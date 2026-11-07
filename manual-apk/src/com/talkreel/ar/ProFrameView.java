@@ -12,11 +12,12 @@ import android.view.View;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Snapchat-inspired face effects drawn on the transparent live-preview layer.
- * The MediaRecorder/camera pipeline is intentionally left unchanged. */
+/** Transparent guides and selfie-frame layer. Face effects are rendered by ArCompositor
+ * so preview and encoded video use the same camera frames and shader output. */
 public class ProFrameView extends View {
     public static final int FILTER_GUIDE=0, FILTER_GLOW=1, FILTER_GLASSES=2,
-        FILTER_BUNNY=3, FILTER_CROWN=4, FILTER_NEON=5, FILTER_COUNT=6;
+        FILTER_BUNNY=3, FILTER_CROWN=4, FILTER_NEON=5, FILTER_BEAUTY=6,
+        FILTER_MAKEUP=7, FILTER_MASK=8, FILTER_CAT=9, FILTER_DOG=10, FILTER_COUNT=11;
     private List<Rect> faces = new ArrayList<Rect>();
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private int filter = FILTER_GUIDE;
@@ -32,7 +33,9 @@ public class ProFrameView extends View {
         switch(v) {
             case FILTER_GLOW:return "Glow"; case FILTER_GLASSES:return "Glasses";
             case FILTER_BUNNY:return "Bunny"; case FILTER_CROWN:return "Crown";
-            case FILTER_NEON:return "Neon"; default:return "Guide";
+            case FILTER_NEON:return "Neon"; case FILTER_BEAUTY:return "Beauty";
+            case FILTER_MAKEUP:return "Makeup"; case FILTER_MASK:return "Mask";
+            case FILTER_CAT:return "Cat"; case FILTER_DOG:return "Dog"; default:return "Guide";
         }
     }
     public void setFaces(List<Rect> f) {
@@ -45,11 +48,7 @@ public class ProFrameView extends View {
         super.onDraw(c);
         int w=getWidth(), h=getHeight(); if(w<=0||h<=0)return;
         if(AppState.showFrame) guides(c,w,h); else drawSelfieFrame(c,w,h);
-        if(filter==FILTER_GUIDE||faces.isEmpty()) {
-            if(AppState.showFrame&&!faces.isEmpty()) box(c,faces.get(0));
-            return;
-        }
-        for(Rect face:faces) effect(c,face);
+        if(AppState.showFrame&&!faces.isEmpty()) box(c,faces.get(0));
     }
     private void guides(Canvas c,int w,int h) {
         p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(2); p.setColor(Color.argb(65,255,255,255));
