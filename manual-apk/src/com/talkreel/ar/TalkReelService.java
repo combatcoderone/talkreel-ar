@@ -128,6 +128,10 @@ public class TalkReelService extends Service {
             }
             startForegroundNotification(type);
             showOverlay();
+            if (overlayView == null) {
+                stopForeground(true);
+                stopSelf();
+            }
             return START_NOT_STICKY;
         }
         // Recording uses camera and microphone only after the user starts a clip.
