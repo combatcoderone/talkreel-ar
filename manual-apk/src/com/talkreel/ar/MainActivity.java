@@ -1674,6 +1674,9 @@ public class MainActivity extends Activity {
         final int finalSec = AppState.seconds;
         AppState.isRecording = false;
         AppState.isPaused = false;
+        Intent serviceFinished = new Intent(this, TalkReelService.class);
+        serviceFinished.setAction(TalkReelService.ACTION_RECORDING_FINISHED);
+        try { startService(serviceFinished); } catch (Exception ignored) {}
         cameraHandler.post(new Runnable() {
             public void run() {
                 File clip = AppState.lastFile == null ? null : new File(AppState.lastFile);
@@ -1759,6 +1762,11 @@ public class MainActivity extends Activity {
             try { cameraManager.unregisterAvailabilityCallback(cameraAvailabilityCallback); } catch (Exception e) {}
         }
         pendingRecordWhenCameraReady = false;
+        if (AppState.isRecording) {
+            Intent serviceFinished = new Intent(this, TalkReelService.class);
+            serviceFinished.setAction(TalkReelService.ACTION_RECORDING_FINISHED);
+            try { startService(serviceFinished); } catch (Exception ignored) {}
+        }
         if (cameraHandler != null) {
             cameraHandler.post(new Runnable() {
                 public void run() {
