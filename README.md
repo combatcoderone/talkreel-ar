@@ -139,10 +139,11 @@ Media3 export stage. Export failure leaves the original recording intact.
 
 ### Framing, Pro, and Script Coach
 
-- Basic AR filters are removed, on purpose, in v0.6. No Beauty, Cartoon,
-  Animal, Glasses, Glow, or Circle filter. Framing is a clean Pro guide
-  only: thin white guide circle, rule of thirds, orange face box, no dim
-  or tint. See docs/PRO.md.
+- The integration branch includes GPU-rendered AR effects (Glow, Glasses,
+  Bunny, Crown, Neon, Beauty, Makeup, Mask, Cat, Dog) composited into both
+  Studio preview and the recorded video. These are stylized face-rectangle
+  shaders, not dense landmark tracking or segmentation. Device validation
+  remains a release gate. See docs/PRODUCT-READINESS.md.
 - Text colour and Caption colour buttons, cycling White, Yellow, Green,
   Cyan, Orange, Pink, saved in settings.
 - Face mode: Front camera (Face: On) or rear camera (Face: Off) for
