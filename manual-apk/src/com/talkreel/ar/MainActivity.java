@@ -759,16 +759,72 @@ public class MainActivity extends Activity {
         }).setNegativeButton("Cancel",null).show();
     }
     private void showVideoReview(final File clip) {
-        if(clip==null || !clip.exists() || clip.length()==0) return;
-        new AlertDialog.Builder(this).setTitle("Review video")
-            .setMessage(clip.getName()+"\n"+(clip.length()/1024)+" KB\n\nPlay and check the result before sharing.")
-            .setNegativeButton("Close",null)
-            .setNeutralButton("Play",(d,w)->{
-                try { Uri u=ClipProvider.uriForFile(clip); Intent i=new Intent(Intent.ACTION_VIEW);
-                    i.setDataAndType(u,"video/mp4"); i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); startActivity(i);
-                } catch(Exception e) { Toast.makeText(this,"No video player is available.",Toast.LENGTH_LONG).show(); }
-            })
-            .setPositiveButton("Export to phone",(d,w)->exportVideoToPhone(clip)).show();
+        if (clip == null || !clip.exists() || clip.length() == 0) return;
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(20, 12, 20, 12);
+        TextView details = new TextView(this);
+        details.setText(clip.getName() + " · " + Math.max(1, clip.length() / 1024) + " KB");
+        details.setTextSize(13);
+        panel.addView(details);
+        final android.widget.VideoView player = new android.widget.VideoView(this);
+        player.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 300));
+        panel.addView(player);
+        final AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Review video").setView(panel)
+                .setNegativeButton("Close", null)
+                .setNeutralButton("Retake", null)
+                .setPositiveButton("Export to phone", null).create();
+        dialog.setOnShowListener(new android.content.Dialog.DialogInterface.OnShowListener() {
+            public void onShow(android.content.DialogInterface d) {
+                dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(new View.OnClickListener() {
+                    public void onClick(View v) {
+                        dialog.dismiss();
+                        startRecording();
+                    }
+                });
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(new View.OnClickListener() {
+                    public void onClick(View v) {
+                        dialog.dismiss();
+                        exportVideoToPhone(clip);
+                    }
+                });
+            }
+        });
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        Button discard = UiStyle.dark(this, "Discard video");
+        discard.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                new AlertDialog.Builder(MainActivity.this).setTitle("Discard this video?")
+                        .setMessage("This permanently deletes " + clip.getName() + ".")
+                        .setNegativeButton("Keep video", null)
+                        .setPositiveButton("Discard", (dd, ww) -> {
+                            if (clip.delete()) {
+                                if (clip.getAbsolutePath().equals(AppState.lastFile)) AppState.lastFile = "";
+                                dialog.dismiss();
+                                Toast.makeText(MainActivity.this, "Video discarded.", Toast.LENGTH_SHORT).show();
+                            } else Toast.makeText(MainActivity.this, "Could not delete this video.", Toast.LENGTH_LONG).show();
+                        }).show();
+            }
+        });
+        actions.addView(discard);
+        panel.addView(actions);
+        dialog.setOnDismissListener(new android.content.DialogInterface.OnDismissListener() {
+            public void onDismiss(android.content.DialogInterface d) {
+                try { player.stopPlayback(); } catch (Exception ignored) {}
+            }
+        });
+        dialog.show();
+        try {
+            Uri uri = ClipProvider.uriForFile(clip);
+            player.setVideoURI(uri);
+            player.setMediaController(new android.widget.MediaController(this));
+            player.setOnPreparedListener(new android.media.MediaPlayer.OnPreparedListener() {
+                public void onPrepared(android.media.MediaPlayer mp) { mp.setLooping(false); }
+            });
+        } catch (Exception e) {
+            Toast.makeText(this, "Could not load video preview: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
     private void exportVideoToPhone(File clip) {
         if(clip==null || !clip.exists() || clip.length()==0) return;
