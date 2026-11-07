@@ -1174,7 +1174,7 @@ public class MainActivity extends Activity {
                                 previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
                                 previewBuilder.addTarget(previewSurface);
                                 previewBuilder.addTarget(recorderSurface);
-                                previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
+                                previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, faceDetectMode);
                                 List<Surface> surfaces = new ArrayList<Surface>();
                                 surfaces.add(previewSurface);
                                 surfaces.add(recorderSurface);
