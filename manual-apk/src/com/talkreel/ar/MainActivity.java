@@ -641,6 +641,12 @@ public class MainActivity extends Activity {
             else if (clip != null) Toast.makeText(this, "Storage permission denied. Video was not exported.", Toast.LENGTH_LONG).show();
             return;
         }
+        if (requestCode == 43) {
+            boolean audioOk = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            if (audioOk) startRecording();
+            else Toast.makeText(this, "Microphone permission denied. Recording was not started.", Toast.LENGTH_LONG).show();
+            return;
+        }
         if (cameraOk) {
             mainHandler.postDelayed(new Runnable() { public void run() { openCamera(); } }, 200);
         } else {
