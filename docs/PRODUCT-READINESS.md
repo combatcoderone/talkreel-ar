@@ -28,7 +28,7 @@ It is not a claim that the app is ready for public distribution.
 | Music rights | **Needs legal/product review** | Keep the license and attribution record for every track, verify commercial-use and redistribution restrictions, and provide required attribution in the exported/share flow for CC BY tracks. A track's availability on a free-music site is not a blanket license for every use. |
 | Automated Android tests | **Insufficient** | Add unit tests for settings/template persistence, SRT parsing/timing, export fallback, media naming and file handling, plus instrumentation tests for camera lifecycle and MediaStore export. CI compilation alone is not functional validation. |
 | Accessibility and UX | **Not verified** | Test TalkBack, touch target sizes, contrast, font scaling, landscape/large-screen behavior, error recovery and permission explanations. |
-| Store/distribution readiness | **Not complete** | Confirm target SDK and Play policy requirements at submission time, app listing/assets, content rating, support contact, crash reporting, staged rollout and rollback plan. |
+| Store/distribution readiness | **Not complete** | Both build paths now target Android 16 / API 36, the current Google Play submission requirement. Still validate Android 16 behavior, app listing/assets, content rating, support contact, crash reporting, staged rollout and rollback plan. |
 | Overlay limitations | **Platform constraint** | The floating overlay cannot show TalkReel's live camera while Instagram/YouTube/TikTok owns the camera. Keep the live preview in TalkReel Studio and describe the overlay as a teleprompter companion only. |
 
 ## Known technical boundaries
