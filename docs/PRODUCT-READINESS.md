@@ -12,6 +12,8 @@ It is not a claim that the app is ready for public distribution.
 - Added SRT caption overlay processing to the finished-video export path when a Pro caption file exists.
 - Kept the original recording intact if final export fails; the original is used for review as a fallback.
 - Added a CI job that compiles the Media3-enabled Android source and uploads a debug APK artifact.
+- Targeted Android 16 / API 36 in both build paths and added edge-to-edge system-bar insets for Android 15+.
+- Separated overlay and recording foreground-service modes: the user-requested overlay uses the declared special-use type, while camera/microphone types are activated only for recording.
 - Kept the standalone manual APK build working without Media3 dependencies. That fallback build does not provide digital music mixing or burned-in captions; use the Gradle build for those features.
 
 ## Release blockers — not complete
