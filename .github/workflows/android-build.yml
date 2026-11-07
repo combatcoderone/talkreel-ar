@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feature/main-settings-template-workflow
       - feature/presenter-control-ui-v0.8
       - feature/snapchat-style-ar-v0.9
   pull_request:
