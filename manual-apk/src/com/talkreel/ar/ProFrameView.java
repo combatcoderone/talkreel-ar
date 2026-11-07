@@ -44,7 +44,7 @@ public class ProFrameView extends View {
     @Override protected void onDraw(Canvas c) {
         super.onDraw(c);
         int w=getWidth(), h=getHeight(); if(w<=0||h<=0)return;
-        if(AppState.showFrame) guides(c,w,h);
+        if(AppState.showFrame) guides(c,w,h); else drawSelfieFrame(c,w,h);
         if(filter==FILTER_GUIDE||faces.isEmpty()) {
             if(AppState.showFrame&&!faces.isEmpty()) box(c,faces.get(0));
             return;
@@ -56,19 +56,22 @@ public class ProFrameView extends View {
         c.drawLine(w/3f,0,w/3f,h,p); c.drawLine(2*w/3f,0,2*w/3f,h,p);
         c.drawLine(0,h/3f,w,h/3f,p); c.drawLine(0,2*h/3f,w,2*h/3f,p);
         p.setColor(Color.argb(145,255,255,255)); p.setStrokeWidth(3);
-        float cx=w/2f, cy=h*.43f, fw=w*.66f, fh=h*.66f;
-        RectF frame=new RectF(cx-fw/2f,cy-fh/2f,cx+fw/2f,cy+fh/2f);
-        if(frameShape==1) c.drawOval(frame,p);
-        else if(frameShape==2) {
-            Path heart=new Path();
-            heart.moveTo(cx,cy+fh*.43f);
-            heart.cubicTo(cx-fw*.12f,cy+fh*.23f,cx-fw*.53f,cy-fh*.02f,cx-fw*.43f,cy-fh*.29f);
-            heart.cubicTo(cx-fw*.34f,cy-fh*.52f,cx-fw*.08f,cy-fh*.47f,cx,cy-fh*.24f);
-            heart.cubicTo(cx+fw*.08f,cy-fh*.47f,cx+fw*.34f,cy-fh*.52f,cx+fw*.43f,cy-fh*.29f);
-            heart.cubicTo(cx+fw*.53f,cy-fh*.02f,cx+fw*.12f,cy+fh*.23f,cx,cy+fh*.43f);
-            heart.close(); c.drawPath(heart,p);
-        } else if(frameShape==3) c.drawOval(new RectF(cx-fw*.43f,cy-fh*.48f,cx+fw*.43f,cy+fh*.48f),p);
-        else c.drawRoundRect(frame,18,18,p);
+        drawSelfieFrame(c,w,h);
+    }
+    private void drawSelfieFrame(Canvas c,int w,int h) {
+            float cx=w/2f, cy=h*.43f, fw=w*.66f, fh=h*.66f;
+            RectF frame=new RectF(cx-fw/2f,cy-fh/2f,cx+fw/2f,cy+fh/2f);
+            if(frameShape==1) c.drawOval(frame,p);
+            else if(frameShape==2) {
+                Path heart=new Path();
+                heart.moveTo(cx,cy+fh*.43f);
+                heart.cubicTo(cx-fw*.12f,cy+fh*.23f,cx-fw*.53f,cy-fh*.02f,cx-fw*.43f,cy-fh*.29f);
+                heart.cubicTo(cx-fw*.34f,cy-fh*.52f,cx-fw*.08f,cy-fh*.47f,cx,cy-fh*.24f);
+                heart.cubicTo(cx+fw*.08f,cy-fh*.47f,cx+fw*.34f,cy-fh*.52f,cx+fw*.43f,cy-fh*.29f);
+                heart.cubicTo(cx+fw*.53f,cy-fh*.02f,cx+fw*.12f,cy+fh*.23f,cx,cy+fh*.43f);
+                heart.close(); c.drawPath(heart,p);
+            } else if(frameShape==3) c.drawOval(new RectF(cx-fw*.43f,cy-fh*.48f,cx+fw*.43f,cy+fh*.48f),p);
+            else c.drawRoundRect(frame,18,18,p);
     }
     private void box(Canvas c,Rect f) {
         p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(3); p.setColor(Color.argb(190,255,158,43));
