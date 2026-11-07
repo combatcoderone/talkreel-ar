@@ -166,7 +166,7 @@ public class TalkReelService extends Service {
         overlayTimer.setTextSize(12);
         layout.addView(overlayTimer);
         TextView modeNote = new TextView(this);
-        modeNote.setText("Teleprompter companion. Keep your face preview open in TalkReel; the social app controls its own camera.");
+        modeNote.setText("Camera access is first-come, first-served. If another app owns it, TalkReel waits and notifies you.");
         modeNote.setTextColor(0xFFCCCCCC);
         modeNote.setTextSize(11);
         modeNote.setPadding(2, 4, 2, 8);
