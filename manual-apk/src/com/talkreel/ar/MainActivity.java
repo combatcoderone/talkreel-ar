@@ -13,6 +13,7 @@ import android.content.pm.PackageManager;
 import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraCaptureSession;
+import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
@@ -52,6 +53,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
 import java.util.Locale;
 
 // v0.6 professional rebuild.
@@ -92,6 +95,12 @@ public class MainActivity extends Activity {
     private HandlerThread cameraThread;
     private Handler cameraHandler;
     private Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final Set<String> unavailableCameraIds = new HashSet<String>();
+    private volatile String selectedCameraId;
+    private volatile boolean waitingForCamera = false;
+    private boolean waitingToastShown = false;
+    private CameraManager cameraManager;
+    private CameraManager.AvailabilityCallback cameraAvailabilityCallback;
     private SpeechRecognizer speechRecognizer;
     private boolean speechOn = false;
     private String currentCaptionLang = "";
@@ -170,6 +179,27 @@ public class MainActivity extends Activity {
         cameraThread = new HandlerThread("CameraThread");
         cameraThread.start();
         cameraHandler = new Handler(cameraThread.getLooper());
+        cameraManager = (CameraManager) getSystemService(CAMERA_SERVICE);
+        cameraAvailabilityCallback = new CameraManager.AvailabilityCallback() {
+            @Override public void onCameraUnavailable(String cameraId) {
+                synchronized (unavailableCameraIds) { unavailableCameraIds.add(cameraId); }
+                if (cameraId.equals(selectedCameraId) && cameraDevice == null && !cameraOpening) showCameraWaiting();
+            }
+            @Override public void onCameraAvailable(String cameraId) {
+                synchronized (unavailableCameraIds) { unavailableCameraIds.remove(cameraId); }
+                if (cameraId.equals(selectedCameraId) && waitingForCamera) {
+                    waitingForCamera = false;
+                    waitingToastShown = false;
+                    mainHandler.post(new Runnable() {
+                        public void run() {
+                            if (statusView != null) statusView.setText("Camera available · Reconnecting preview…");
+                            if (textureView != null && textureView.isAvailable() && !AppState.isRecording) openCamera();
+                        }
+                    });
+                }
+            }
+        };
+        if (cameraManager != null) cameraManager.registerAvailabilityCallback(cameraAvailabilityCallback, mainHandler);
 
         IntentFilter f = new IntentFilter();
         f.addAction(AppState.ACTION_RECORD);
@@ -777,7 +807,8 @@ public class MainActivity extends Activity {
             startActivity(i);
             return;
         }
-        if (!AppState.isRecording) releaseCamera();
+        // Keep the camera session open: TalkReel's camera-first policy is
+        // first-come-first-served. If another app already owns it, we wait.
         Intent service = new Intent(this, TalkReelService.class);
         service.setAction(TalkReelService.ACTION_START_OVERLAY);
         try {
@@ -792,7 +823,8 @@ public class MainActivity extends Activity {
     private void openSocialApp(String pkg, String appName) {
         AppState.script = scriptEdit.getText().toString();
         savePrefs();
-        if (!AppState.isRecording) releaseCamera();
+        // Do not voluntarily release the camera when launching a social app.
+        // The app that acquired it first keeps ownership; TalkReel waits if busy.
         String launchError = null;
         try {
             Intent launch = getPackageManager().getLaunchIntentForPackage(pkg);
@@ -1056,6 +1088,19 @@ public class MainActivity extends Activity {
         }
     };
 
+    private void showCameraWaiting() {
+        waitingForCamera = true;
+        mainHandler.post(new Runnable() {
+            public void run() {
+                if (statusView != null) statusView.setText("Camera busy · Waiting for the other app to release it");
+                if (!waitingToastShown) {
+                    waitingToastShown = true;
+                    Toast.makeText(MainActivity.this, "Camera in use by another app. TalkReel is waiting.", Toast.LENGTH_LONG).show();
+                }
+            }
+        });
+    }
+
     private void openCamera() {
         // Guard: one open at a time. This stops the open/close loop.
         if (cameraOpening || cameraDevice != null) return;
@@ -1063,7 +1108,7 @@ public class MainActivity extends Activity {
         cameraOpening = true;
         cameraHandler.post(new Runnable() {
             public void run() {
-                CameraManager manager = (CameraManager) getSystemService(CAMERA_SERVICE);
+                CameraManager manager = cameraManager != null ? cameraManager : (CameraManager) getSystemService(CAMERA_SERVICE);
                 try {
                     String cameraId = null;
                     for (String id : manager.getCameraIdList()) {
@@ -1072,6 +1117,14 @@ public class MainActivity extends Activity {
                         if (facing != null && facing == (preferFrontCamera ? CameraCharacteristics.LENS_FACING_FRONT : CameraCharacteristics.LENS_FACING_BACK)) { cameraId = id; break; }
                     }
                     if (cameraId == null) cameraId = manager.getCameraIdList()[0];
+                    selectedCameraId = cameraId;
+                    synchronized (unavailableCameraIds) {
+                        if (unavailableCameraIds.contains(cameraId)) {
+                            cameraOpening = false;
+                            showCameraWaiting();
+                            return;
+                        }
+                    }
                     CameraCharacteristics chars = manager.getCameraCharacteristics(cameraId);
                     activeArray = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
                     Integer facing = chars.get(CameraCharacteristics.LENS_FACING);
@@ -1081,6 +1134,15 @@ public class MainActivity extends Activity {
                         public void onOpened(CameraDevice camera) {
                             cameraOpening = false;
                             cameraDevice = camera;
+                            boolean wasWaiting = waitingForCamera;
+                            waitingForCamera = false;
+                            waitingToastShown = false;
+                            if (wasWaiting) mainHandler.post(new Runnable() {
+                                public void run() {
+                                    if (statusView != null) statusView.setText("Camera ready · Preview only · Not recording");
+                                    Toast.makeText(MainActivity.this, "Camera ready. TalkReel preview resumed.", Toast.LENGTH_SHORT).show();
+                                }
+                            });
                             startPreview();
                         }
                         public void onDisconnected(CameraDevice camera) {
@@ -1092,15 +1154,33 @@ public class MainActivity extends Activity {
                             cameraOpening = false;
                             camera.close();
                             if (cameraDevice == camera) cameraDevice = null;
-                            mainHandler.post(new Runnable() {
-                                public void run() { statusView.setText("Camera busy. Close Instagram camera first."); }
-                            });
+                            if (error == CameraDevice.StateCallback.ERROR_CAMERA_IN_USE || error == CameraDevice.StateCallback.ERROR_MAX_CAMERAS_IN_USE) {
+                                showCameraWaiting();
+                            } else {
+                                mainHandler.post(new Runnable() {
+                                    public void run() {
+                                        if (statusView != null) statusView.setText("Camera error · Check camera permission or device availability");
+                                        Toast.makeText(MainActivity.this, "TalkReel could not open the camera.", Toast.LENGTH_SHORT).show();
+                                    }
+                                });
+                            }
                         }
                     }, cameraHandler);
+                } catch (CameraAccessException e) {
+                    cameraOpening = false;
+                    if (e.getReason() == CameraAccessException.CAMERA_IN_USE || e.getReason() == CameraAccessException.MAX_CAMERAS_IN_USE) {
+                        showCameraWaiting();
+                    } else {
+                        mainHandler.post(new Runnable() {
+                            public void run() {
+                                if (statusView != null) statusView.setText("Camera error · " + e.getReason());
+                            }
+                        });
+                    }
                 } catch (Exception e) {
                     cameraOpening = false;
                     mainHandler.post(new Runnable() {
-                        public void run() { statusView.setText("Camera error"); }
+                        public void run() { if (statusView != null) statusView.setText("Camera error"); }
                     });
                 }
             }
@@ -1276,6 +1356,9 @@ public class MainActivity extends Activity {
         speechOn = false;
         stopCaptionListening();
         MusicEngine.stop();
+        if (cameraManager != null && cameraAvailabilityCallback != null) {
+            try { cameraManager.unregisterAvailabilityCallback(cameraAvailabilityCallback); } catch (Exception e) {}
+        }
         if (cameraThread != null) cameraThread.quitSafely();
         if (cameraDevice != null) cameraDevice.close();
     }
