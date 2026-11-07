@@ -20,6 +20,9 @@ public class ProFrameView extends View {
     private List<Rect> faces = new ArrayList<Rect>();
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private int filter = FILTER_GUIDE;
+    private int frameShape = 0;
+    public void setFrameShape(int shape) { frameShape = Math.max(0, Math.min(3, shape)); invalidate(); }
+    public int getFrameShape() { return frameShape; }
 
     public ProFrameView(Context c) { super(c); }
     public ProFrameView(Context c, AttributeSet a) { super(c,a); }
@@ -53,7 +56,19 @@ public class ProFrameView extends View {
         c.drawLine(w/3f,0,w/3f,h,p); c.drawLine(2*w/3f,0,2*w/3f,h,p);
         c.drawLine(0,h/3f,w,h/3f,p); c.drawLine(0,2*h/3f,w,2*h/3f,p);
         p.setColor(Color.argb(145,255,255,255)); p.setStrokeWidth(3);
-        c.drawCircle(w/2f,h*.42f,Math.min(w,h)*.32f,p);
+        float cx=w/2f, cy=h*.43f, fw=w*.66f, fh=h*.66f;
+        RectF frame=new RectF(cx-fw/2f,cy-fh/2f,cx+fw/2f,cy+fh/2f);
+        if(frameShape==1) c.drawOval(frame,p);
+        else if(frameShape==2) {
+            Path heart=new Path();
+            heart.moveTo(cx,cy+fh*.43f);
+            heart.cubicTo(cx-fw*.12f,cy+fh*.23f,cx-fw*.53f,cy-fh*.02f,cx-fw*.43f,cy-fh*.29f);
+            heart.cubicTo(cx-fw*.34f,cy-fh*.52f,cx-fw*.08f,cy-fh*.47f,cx,cy-fh*.24f);
+            heart.cubicTo(cx+fw*.08f,cy-fh*.47f,cx+fw*.34f,cy-fh*.52f,cx+fw*.43f,cy-fh*.29f);
+            heart.cubicTo(cx+fw*.53f,cy-fh*.02f,cx+fw*.12f,cy+fh*.23f,cx,cy+fh*.43f);
+            heart.close(); c.drawPath(heart,p);
+        } else if(frameShape==3) c.drawOval(new RectF(cx-fw*.43f,cy-fh*.48f,cx+fw*.43f,cy+fh*.48f),p);
+        else c.drawRoundRect(frame,18,18,p);
     }
     private void box(Canvas c,Rect f) {
         p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(3); p.setColor(Color.argb(190,255,158,43));
