@@ -49,7 +49,7 @@ jobs:
           export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
           bash build.sh
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging app-debug.apk
-          "$ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner" verify --verbose app-debug.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --verbose app-debug.apk
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
