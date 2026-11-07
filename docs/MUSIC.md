@@ -137,3 +137,13 @@ license, credit if any, page URL, download URL, and file name. Check the
 download URL with curl first, and confirm `file` says MP3. Update this file
 with the same track, in the same format. Do not add a track you have not
 downloaded and checked.
+
+
+## Creator music controls
+
+The updated Music section includes:
+- Search by track title, artist, mood or intended use.
+- A volume slider that adjusts the active music preview/player.
+- Separate Play, Stop, Download and Use actions for each track.
+
+The catalog is still the nine tracks listed above. New tracks should only be added after downloading and checking the actual MP3, confirming the source page's current licence and recording attribution or Content ID caveats. A source-page listing alone is not sufficient verification.
