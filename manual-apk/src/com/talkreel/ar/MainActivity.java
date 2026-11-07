@@ -2,6 +2,7 @@ package com.talkreel.ar;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.PictureInPictureParams;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -24,6 +25,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
+import android.util.Rational;
 import android.provider.Settings;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
@@ -38,6 +40,9 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.SeekBar;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.widget.Toast;
 import java.io.File;
 import java.text.SimpleDateFormat;
@@ -55,6 +60,11 @@ import java.util.Locale;
 // they never change state here.
 public class MainActivity extends Activity {
     private TextureView textureView;
+    private FrameLayout previewBox;
+    private LinearLayout contentRoot;
+    private SafeScrollView outerScroll;
+    private int pipAspectMode = 0; // 0=9:16, 1=1:1, 2=16:9
+    private int faceDetectMode = CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF;
     private ProFrameView frameView;
     private TextView statusView;
     private TextView coachView;
@@ -148,6 +158,7 @@ public class MainActivity extends Activity {
         AppState.langMode = prefs.getInt("langMode", 0);
         AppState.showFrame = prefs.getBoolean("showFrame", true);
         AppState.arFilter = prefs.getInt("arFilter", ProFrameView.FILTER_GUIDE);
+        pipAspectMode = prefs.getInt("pipAspectMode", 0);
         AppState.isPro = prefs.getBoolean("isPro", false);
         AppState.textColorIndex = prefs.getInt("textColor", 0);
         AppState.captionColorIndex = prefs.getInt("captionColor", 1);
@@ -176,7 +187,8 @@ public class MainActivity extends Activity {
             registerReceiver(controlReceiver, f);
         }
 
-        LinearLayout root = new LinearLayout(this);
+        contentRoot = new LinearLayout(this);
+        final LinearLayout root = contentRoot;
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(0xFF000000);
         root.setPadding(16, 16, 16, 16);
@@ -202,7 +214,7 @@ public class MainActivity extends Activity {
         audioView.setPadding(8, 4, 8, 8);
         root.addView(audioView);
 
-        FrameLayout previewBox = new FrameLayout(this);
+        previewBox = new FrameLayout(this);
         previewBox.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 520));
         textureView = new TextureView(this);
         textureView.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -358,6 +370,26 @@ public class MainActivity extends Activity {
         row2b.addView(shareButton);
         root.addView(row2b);
 
+        LinearLayout pipRow = new LinearLayout(this);
+        pipRow.setOrientation(LinearLayout.HORIZONTAL);
+        Button pipFrameButton = UiStyle.dark(this, "PiP frame: 9:16");
+        pipFrameButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                pipAspectMode = (pipAspectMode + 1) % 3;
+                String label = pipAspectMode == 0 ? "9:16" : pipAspectMode == 1 ? "1:1" : "16:9";
+                pipFrameButton.setText("PiP frame: " + label);
+                updatePipParams();
+                savePrefs();
+            }
+        });
+        pipRow.addView(pipFrameButton);
+        Button enterPipButton = UiStyle.primary(this, "Use PiP");
+        enterPipButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { enterSelfiePip(); }
+        });
+        pipRow.addView(enterPipButton);
+        root.addView(pipRow);
+
         LinearLayout row3 = new LinearLayout(this);
         row3.setOrientation(LinearLayout.HORIZONTAL);
         Button capButton = UiStyle.dark(this, "Captions");
@@ -465,11 +497,35 @@ public class MainActivity extends Activity {
         musicTitle.setPadding(8, 16, 8, 4);
         root.addView(musicTitle);
         musicStatusView = new TextView(this);
-        musicStatusView.setText("Tap Play to test a track. Tap Download to save it on this phone.");
+        musicStatusView.setText("Tap Play to preview a track. Download to keep it offline; Use selects it for recording.");
         musicStatusView.setTextColor(0xFFAAAAAA);
         musicStatusView.setTextSize(13);
         musicStatusView.setPadding(8, 4, 8, 8);
         root.addView(musicStatusView);
+        EditText musicSearch = new EditText(this);
+        musicSearch.setSingleLine(true);
+        musicSearch.setTextColor(0xFFFFFFFF);
+        musicSearch.setHintTextColor(0xFF888888);
+        musicSearch.setHint("Search music by title, artist or mood");
+        musicSearch.setPadding(14, 10, 14, 10);
+        root.addView(musicSearch);
+        TextView volumeLabel = new TextView(this);
+        volumeLabel.setText("Preview volume");
+        volumeLabel.setTextColor(0xFFCCCCCC);
+        volumeLabel.setTextSize(12);
+        volumeLabel.setPadding(8, 6, 8, 0);
+        root.addView(volumeLabel);
+        SeekBar musicVolume = new SeekBar(this);
+        musicVolume.setMax(100);
+        musicVolume.setProgress(80);
+        musicVolume.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                MusicEngine.setVolume(progress / 100.0f);
+            }
+            public void onStartTrackingTouch(SeekBar bar) {}
+            public void onStopTrackingTouch(SeekBar bar) {}
+        });
+        root.addView(musicVolume);
         LinearLayout musicList = new LinearLayout(this);
         musicList.setOrientation(LinearLayout.VERTICAL);
         SafeScrollView musicScroll = new SafeScrollView(this);
@@ -491,7 +547,11 @@ public class MainActivity extends Activity {
             trackView.setTextColor(0xFFFFFFFF);
             trackView.setTextSize(14);
             trackView.setPadding(8, 8, 8, 4);
-            musicList.addView(trackView);
+            LinearLayout trackCard = new LinearLayout(this);
+            trackCard.setOrientation(LinearLayout.VERTICAL);
+            trackCard.setPadding(8, 6, 8, 10);
+            trackCard.setTag((track.title + " " + track.artist + " " + track.mood + " " + track.useFor).toLowerCase(Locale.US));
+            trackCard.addView(trackView);
             LinearLayout musicRow = new LinearLayout(this);
             musicRow.setOrientation(LinearLayout.HORIZONTAL);
             Button playButton = UiStyle.dark(this, "Play");
@@ -533,8 +593,21 @@ public class MainActivity extends Activity {
                 }
             });
             musicRow.addView(useButton);
-            musicList.addView(musicRow);
+            trackCard.addView(musicRow);
+            musicList.addView(trackCard);
         }
+        musicSearch.addTextChangedListener(new TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                String query = s == null ? "" : s.toString().trim().toLowerCase(Locale.US);
+                for (int i = 0; i < musicList.getChildCount(); i++) {
+                    View card = musicList.getChildAt(i);
+                    Object tag = card.getTag();
+                    card.setVisibility(query.isEmpty() || (tag != null && tag.toString().contains(query)) ? View.VISIBLE : View.GONE);
+                }
+            }
+            public void afterTextChanged(Editable s) {}
+        });
         TextView musicNote = new TextView(this);
         musicNote.setText("Sources: Pixabay Music, free, no attribution, and Kevin MacLeod, CC BY 4.0, credit required. See docs/MUSIC.md for every track, license, and link. Music plays through the speaker while you record, it is not mixed into the video file yet.");
         musicNote.setTextColor(0xFFAAAAAA);
@@ -542,7 +615,8 @@ public class MainActivity extends Activity {
         musicNote.setPadding(8, 8, 8, 8);
         root.addView(musicNote);
 
-        SafeScrollView outer = new SafeScrollView(this);
+        outerScroll = new SafeScrollView(this);
+        SafeScrollView outer = outerScroll;
         outer.setVerticalScrollBarEnabled(false);
         
         // Avoid Android framework crashes when the themed scrollbar drawable is null.
@@ -611,9 +685,58 @@ public class MainActivity extends Activity {
         savePrefs();
     }
 
+    private void updatePipParams() {
+        if (android.os.Build.VERSION.SDK_INT < 26) return;
+        try {
+            Rational ratio = pipAspectMode == 1 ? new Rational(1, 1) : pipAspectMode == 2 ? new Rational(16, 9) : new Rational(9, 16);
+            setPictureInPictureParams(new PictureInPictureParams.Builder().setAspectRatio(ratio).build());
+        } catch (Exception ignored) {}
+    }
+
+    private void enterSelfiePip() {
+        if (android.os.Build.VERSION.SDK_INT < 26) {
+            Toast.makeText(this, "Picture-in-picture requires Android 8.0 or newer.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (cameraDevice == null || textureView == null || !textureView.isAvailable()) {
+            Toast.makeText(this, "Wait for the selfie camera preview before entering PiP.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        updatePipParams();
+        try {
+            enterPictureInPictureMode(new PictureInPictureParams.Builder()
+                .setAspectRatio(pipAspectMode == 1 ? new Rational(1, 1) : pipAspectMode == 2 ? new Rational(16, 9) : new Rational(9, 16))
+                .build());
+        } catch (Exception e) {
+            Toast.makeText(this, "Could not enter PiP: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    public void onPictureInPictureModeChanged(boolean inPip, android.content.res.Configuration configuration) {
+        super.onPictureInPictureModeChanged(inPip, configuration);
+        if (contentRoot == null || previewBox == null) return;
+        for (int i = 0; i < contentRoot.getChildCount(); i++) {
+            View child = contentRoot.getChildAt(i);
+            child.setVisibility(!inPip || child == previewBox ? View.VISIBLE : View.GONE);
+        }
+        if (inPip) {
+            previewBox.setBackgroundColor(0xFF000000);
+            ViewGroup.LayoutParams lp = previewBox.getLayoutParams();
+            lp.height = 520;
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            previewBox.setLayoutParams(lp);
+        } else {
+            ViewGroup.LayoutParams lp = previewBox.getLayoutParams();
+            lp.height = 520;
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            previewBox.setLayoutParams(lp);
+        }
+    }
+
     private void savePrefs() {
         SharedPreferences prefs = getSharedPreferences("talkreel", MODE_PRIVATE);
-        prefs.edit().putString("script", AppState.script).putFloat("speed", AppState.speed).putInt("langMode", AppState.langMode).putBoolean("showFrame", AppState.showFrame).putBoolean("isPro", AppState.isPro).putInt("textColor", AppState.textColorIndex).putInt("captionColor", AppState.captionColorIndex).putInt("musicTrack", musicTrackIndex).putBoolean("useMusic", useMusic).putInt("scriptEditorHeight", scriptEditorHeight).putBoolean("faceOn", preferFrontCamera).putInt("arFilter", AppState.arFilter).apply();
+        prefs.edit().putString("script", AppState.script).putFloat("speed", AppState.speed).putInt("langMode", AppState.langMode).putBoolean("showFrame", AppState.showFrame).putBoolean("isPro", AppState.isPro).putInt("textColor", AppState.textColorIndex).putInt("captionColor", AppState.captionColorIndex).putInt("musicTrack", musicTrackIndex).putBoolean("useMusic", useMusic).putInt("scriptEditorHeight", scriptEditorHeight).putBoolean("faceOn", preferFrontCamera) .putInt("arFilter", AppState.arFilter).putInt("pipAspectMode", pipAspectMode).apply();
     }
 
     private void releaseCamera() {
@@ -927,8 +1050,19 @@ public class MainActivity extends Activity {
                     if (cameraId == null) cameraId = manager.getCameraIdList()[0];
                     CameraCharacteristics chars = manager.getCameraCharacteristics(cameraId);
                     activeArray = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+                    int[] supportedFaceModes = chars.get(CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES);
+                    faceDetectMode = CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF;
+                    if (supportedFaceModes != null) {
+                        for (int mode : supportedFaceModes) {
+                            if (mode == CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL) { faceDetectMode = mode; break; }
+                            if (mode == CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE) faceDetectMode = mode;
+                        }
+                    }
                     Integer facing = chars.get(CameraCharacteristics.LENS_FACING);
                     isFrontCamera = facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT;
+                    if (faceDetectMode == CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF) {
+                        mainHandler.post(new Runnable() { public void run() { statusView.setText("This camera lacks hardware face detection. Unity AR face tracking is the advanced path."); } });
+                    }
                     if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) { cameraOpening = false; return; }
                     manager.openCamera(cameraId, new CameraDevice.StateCallback() {
                         public void onOpened(CameraDevice camera) {
@@ -969,7 +1103,7 @@ public class MainActivity extends Activity {
             Surface surface = new Surface(tex);
             previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             previewBuilder.addTarget(surface);
-            previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
+            previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, faceDetectMode);
             cameraDevice.createCaptureSession(Arrays.asList(surface), new CameraCaptureSession.StateCallback() {
                 public void onConfigured(CameraCaptureSession session) {
                     captureSession = session;
