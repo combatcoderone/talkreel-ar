@@ -48,6 +48,7 @@ public class TalkReelService extends Service {
     private Button recButton;
     private Button pauseButton;
     private int overlayTeleHeight = 260;
+    private int overlayTextSize = 26;
     private boolean overlayScrollRunning = false;
     private Handler handler = new Handler(Looper.getMainLooper());
     private Runnable ticker = new Runnable() {
@@ -140,6 +141,7 @@ public class TalkReelService extends Service {
         AppState.speed = prefs.getFloat("speed", 1.0f);
         AppState.showFrame = prefs.getBoolean("showFrame", true);
         AppState.textColorIndex = prefs.getInt("textColor", 0);
+        overlayTextSize = prefs.getInt("teleprompterTextSize", 26);
 
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         if (windowManager == null) {
@@ -164,7 +166,7 @@ public class TalkReelService extends Service {
         overlayTimer.setTextSize(12);
         layout.addView(overlayTimer);
         TextView modeNote = new TextView(this);
-        modeNote.setText("COMPANION MODE  ·  Record, pause and stop with Instagram / YouTube / TikTok. Android does not let an overlay control another app's camera.");
+        modeNote.setText("Teleprompter companion. Keep your face preview open in TalkReel; the social app controls its own camera.");
         modeNote.setTextColor(0xFFCCCCCC);
         modeNote.setTextSize(11);
         modeNote.setPadding(2, 4, 2, 8);
@@ -177,7 +179,7 @@ public class TalkReelService extends Service {
         overlayText = new TextView(this);
         overlayText.setText(AppState.script);
         overlayText.setTextColor(AppState.textColor());
-        overlayText.setTextSize(26);
+        overlayText.setTextSize(overlayTextSize);
         overlayText.setLineSpacing(8, 1.35f);
         overlayText.setPadding(8, 8, 8, 8);
         overlayScroll.addView(overlayText);
@@ -193,7 +195,7 @@ public class TalkReelService extends Service {
             }
         });
         row.addView(recButton);
-        pauseButton = UiStyle.dark(this, "Reset text");
+        pauseButton = UiStyle.dark(this, "Rewind");
         pauseButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 overlayScrollRunning = false;
@@ -216,23 +218,21 @@ public class TalkReelService extends Service {
             }
         });
         row2.addView(textButton);
-        Button smallerButton = UiStyle.dark(this, "Size −");
+        Button smallerButton = UiStyle.dark(this, "Text −");
         smallerButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                overlayTeleHeight = Math.max(160, overlayTeleHeight - 40);
-                ViewGroup.LayoutParams p = overlayScroll.getLayoutParams();
-                p.height = overlayTeleHeight;
-                overlayScroll.setLayoutParams(p);
+                overlayTextSize = Math.max(16, overlayTextSize - 2);
+                if (overlayText != null) overlayText.setTextSize(overlayTextSize);
+                getSharedPreferences("talkreel", MODE_PRIVATE).edit().putInt("teleprompterTextSize", overlayTextSize).apply();
             }
         });
         row2.addView(smallerButton);
-        Button largerButton = UiStyle.dark(this, "Size +");
+        Button largerButton = UiStyle.dark(this, "Text +");
         largerButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                overlayTeleHeight = Math.min(420, overlayTeleHeight + 40);
-                ViewGroup.LayoutParams p = overlayScroll.getLayoutParams();
-                p.height = overlayTeleHeight;
-                overlayScroll.setLayoutParams(p);
+                overlayTextSize = Math.min(48, overlayTextSize + 2);
+                if (overlayText != null) overlayText.setTextSize(overlayTextSize);
+                getSharedPreferences("talkreel", MODE_PRIVATE).edit().putInt("teleprompterTextSize", overlayTextSize).apply();
             }
         });
         row2.addView(largerButton);
