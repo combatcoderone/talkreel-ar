@@ -398,6 +398,7 @@ public class MainActivity extends Activity {
                 floatingPreview = !floatingPreview;
                 floatPreviewButton.setText(floatingPreview ? "Float: On" : "Float selfie");
                 setFloatingPreview(floatingPreview);
+                statusView.setText(floatingPreview ? "Floating selfie: drag the preview to move it; use Selfie size −/+ to resize." : "Selfie preview returned to the normal layout.");
                 savePrefs();
             }
         });
