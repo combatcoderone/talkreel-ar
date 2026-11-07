@@ -982,7 +982,8 @@ public class MainActivity extends Activity {
 
     private void releaseCamera() {
         cameraReleasedForSocial = true;
-        if (cameraHandler == null) return;
+        cameraReleasePending = true;
+        if (cameraHandler == null) { cameraReleasePending = false; return; }
         cameraHandler.post(new Runnable() {
             public void run() {
                 try { if (captureSession != null) { captureSession.close(); captureSession = null; } } catch (Exception ignored) {}
@@ -990,6 +991,7 @@ public class MainActivity extends Activity {
                 try { if (previewSurface != null) { previewSurface.release(); previewSurface = null; } } catch (Exception ignored) {}
                 try { if (cameraDevice != null) { cameraDevice.close(); cameraDevice = null; } } catch (Exception ignored) {}
                 cameraOpening = false;
+                cameraReleasePending = false;
             }
         });
     }
