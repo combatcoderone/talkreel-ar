@@ -720,18 +720,17 @@ public class MainActivity extends Activity {
             View child = contentRoot.getChildAt(i);
             child.setVisibility(!inPip || child == previewBox ? View.VISIBLE : View.GONE);
         }
+        ViewGroup.LayoutParams lp = previewBox.getLayoutParams();
+        lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
         if (inPip) {
             previewBox.setBackgroundColor(0xFF000000);
-            ViewGroup.LayoutParams lp = previewBox.getLayoutParams();
-            lp.height = 520;
-            lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
-            previewBox.setLayoutParams(lp);
+            int availableWidth = getResources().getDisplayMetrics().widthPixels;
+            float ratio = pipAspectMode == 1 ? 1.0f : pipAspectMode == 2 ? (16.0f / 9.0f) : (9.0f / 16.0f);
+            lp.height = Math.max(160, Math.round(availableWidth / ratio));
         } else {
-            ViewGroup.LayoutParams lp = previewBox.getLayoutParams();
             lp.height = 520;
-            lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
-            previewBox.setLayoutParams(lp);
         }
+        previewBox.setLayoutParams(lp);
     }
 
     private void savePrefs() {
