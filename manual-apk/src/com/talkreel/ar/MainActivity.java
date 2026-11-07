@@ -371,7 +371,7 @@ public class MainActivity extends Activity {
             public void onClick(View v) { openSocialApp("com.zhiliaoapp.musically", "TikTok"); }
         });
         row2b.addView(tiktokButton);
-        Button clipsButton = UiStyle.dark(this, "Clips");
+        Button clipsButton = UiStyle.dark(this, "Review videos");
         clipsButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { showClips(); }
         });
@@ -754,7 +754,7 @@ public class MainActivity extends Activity {
 
     private void savePrefs() {
         SharedPreferences prefs = getSharedPreferences("talkreel", MODE_PRIVATE);
-        prefs.edit().putString("script", AppState.script).putFloat("speed", AppState.speed).putInt("langMode", AppState.langMode).putBoolean("showFrame", AppState.showFrame).putBoolean("isPro", AppState.isPro).putInt("textColor", AppState.textColorIndex).putInt("captionColor", AppState.captionColorIndex).putInt("musicTrack", musicTrackIndex).putBoolean("useMusic", useMusic).putInt("scriptEditorHeight", scriptEditorHeight).putBoolean("faceOn", preferFrontCamera).putInt("arFilter", AppState.arFilter).apply();
+        prefs.edit().putString("script", AppState.script).putFloat("speed", AppState.speed).putInt("langMode", AppState.langMode).putBoolean("showFrame", AppState.showFrame).putBoolean("isPro", AppState.isPro).putInt("textColor", AppState.textColorIndex).putInt("captionColor", AppState.captionColorIndex).putInt("musicTrack", musicTrackIndex).putBoolean("useMusic", useMusic).putInt("scriptEditorHeight", scriptEditorHeight).putBoolean("faceOn", preferFrontCamera).putInt("arFilter", AppState.arFilter).putInt("teleprompterTextSize", teleprompterTextSize).putInt("selfieFrameShape", selfieFrameShape).apply();
     }
 
     private void releaseCamera() {
@@ -1254,6 +1254,7 @@ public class MainActivity extends Activity {
                         statusView.setText("Saved to Movies/TalkReelAR." + msg);
                         Toast.makeText(MainActivity.this, "Saved to Movies/TalkReelAR", Toast.LENGTH_LONG).show();
                         startPreview();
+                        showVideoReview(clip);
                     }
                 });
             }
