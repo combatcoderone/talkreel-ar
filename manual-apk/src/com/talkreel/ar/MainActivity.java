@@ -1006,10 +1006,8 @@ public class MainActivity extends Activity {
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            if (!AppState.isRecording) startRecording(); else stopRecording();
-            return true;
-        }
+        // Recording starts only from the explicit Live button or Stop control.
+        // Hardware volume keys retain their normal Android behavior.
         return super.onKeyDown(keyCode, event);
     }
 
