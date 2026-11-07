@@ -784,13 +784,12 @@ public class MainActivity extends Activity {
     }
 
     private void resizeFloatingPreview(int deltaDp) {
-        floatingPreviewWidthDp = Math.max(120, Math.min(220, floatingPreviewWidthDp + deltaDp));
         if (!floatingPreview) {
-            floatingPreview = true;
-            setFloatingPreview(true);
-        } else {
-            setFloatingPreview(true);
+            Toast.makeText(this, "Turn on Float selfie before resizing the preview.", Toast.LENGTH_SHORT).show();
+            return;
         }
+        floatingPreviewWidthDp = Math.max(120, Math.min(220, floatingPreviewWidthDp + deltaDp));
+        setFloatingPreview(true);
         savePrefs();
     }
 
