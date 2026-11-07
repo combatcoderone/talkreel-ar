@@ -99,6 +99,7 @@ public class MainActivity extends Activity {
     private volatile String selectedCameraId;
     private volatile boolean waitingForCamera = false;
     private boolean waitingToastShown = false;
+    private boolean pendingRecordWhenCameraReady = false;
     private CameraManager cameraManager;
     private CameraManager.AvailabilityCallback cameraAvailabilityCallback;
     private SpeechRecognizer speechRecognizer;
@@ -1144,6 +1145,12 @@ public class MainActivity extends Activity {
                                 }
                             });
                             startPreview();
+                            if (pendingRecordWhenCameraReady) {
+                                pendingRecordWhenCameraReady = false;
+                                mainHandler.postDelayed(new Runnable() {
+                                    public void run() { if (!AppState.isRecording) startRecording(); }
+                                }, 600);
+                            }
                         }
                         public void onDisconnected(CameraDevice camera) {
                             cameraOpening = false;
@@ -1207,25 +1214,17 @@ public class MainActivity extends Activity {
         } catch (Exception e) {}
     }
 
-    private int recordWaitCount = 0;
     private void startRecording() {
         if (AppState.isRecording) return;
-        // v0.6.1: if the camera is not open yet, wait for it instead
-        // of starting MediaRecorder with no camera, which left the
-        // app in REC with no video. Retry up to 5 times, 400ms apart.
+        // Keep the Live request pending until the camera is actually available.
+        // CameraManager availability callbacks resume it without rapid polling.
         if (cameraDevice == null) {
+            pendingRecordWhenCameraReady = true;
+            statusView.setText("Waiting for camera · Recording will start when it is ready");
             openCamera();
-            if (recordWaitCount < 5) {
-                recordWaitCount++;
-                statusView.setText("Opening camera...");
-                mainHandler.postDelayed(new Runnable() { public void run() { startRecording(); } }, 400);
-                return;
-            }
-            recordWaitCount = 0;
-            Toast.makeText(this, "Camera is not ready. Close Instagram camera first, then try again.", Toast.LENGTH_LONG).show();
+            if (waitingForCamera) showCameraWaiting();
             return;
         }
-        recordWaitCount = 0;
         AppState.script = scriptEdit.getText().toString();
         savePrefs();
         teleprompterView.setText(AppState.script);
@@ -1360,6 +1359,7 @@ public class MainActivity extends Activity {
             try { cameraManager.unregisterAvailabilityCallback(cameraAvailabilityCallback); } catch (Exception e) {}
         }
         if (cameraThread != null) cameraThread.quitSafely();
+        pendingRecordWhenCameraReady = false;
         if (cameraDevice != null) cameraDevice.close();
     }
 }
