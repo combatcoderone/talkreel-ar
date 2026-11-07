@@ -830,10 +830,23 @@ public class MainActivity extends Activity {
             child.setVisibility(!inPip || child == previewBox ? View.VISIBLE : View.GONE);
         }
         ViewGroup.LayoutParams lp = previewBox.getLayoutParams();
-        lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
-        // Keep the preview and face-overlay coordinate spaces identical.
-        // PiP window ratio is set separately; Android letterboxes the activity surface as needed.
-        lp.height = 520;
+        if (inPip) {
+            // The PiP activity has a much smaller viewport; reset the in-app
+            // floating translation so the camera preview remains inside it.
+            previewBox.setTranslationX(0f);
+            previewBox.setTranslationY(0f);
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            lp.height = 520;
+        } else if (floatingPreview) {
+            lp.width = dp(floatingPreviewWidthDp);
+            lp.height = Math.round(dp(floatingPreviewWidthDp) * (16.0f / 9.0f));
+            previewBox.post(new Runnable() { public void run() { updateFloatingPreviewPosition(); } });
+        } else {
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            lp.height = 520;
+            previewBox.setTranslationX(0f);
+            previewBox.setTranslationY(0f);
+        }
         previewBox.setLayoutParams(lp);
     }
 
