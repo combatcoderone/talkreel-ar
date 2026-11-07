@@ -620,7 +620,8 @@ public class MainActivity extends Activity {
                 public android.view.WindowInsets onApplyWindowInsets(View view, android.view.WindowInsets insets) {
                     android.graphics.Insets bars = insets.getInsets(
                             android.view.WindowInsets.Type.systemBars()
-                                    | android.view.WindowInsets.Type.displayCutout());
+                                    | android.view.WindowInsets.Type.displayCutout()
+                                    | android.view.WindowInsets.Type.ime());
                     view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
                     return insets;
                 }
