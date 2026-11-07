@@ -1618,12 +1618,14 @@ public class MainActivity extends Activity {
     private void startMedia3Export(final File clip, final File music, final File srt) {
         final Runnable showFinal = new Runnable() {
             public void run() {
+                if (isFinishing() || isDestroyed()) return;
                 File finalClip = AppState.lastFile == null ? null : new File(AppState.lastFile);
                 showVideoReview(finalClip != null && finalClip.isFile() && finalClip.length() > 0 ? finalClip : clip);
             }
         };
         final Runnable showOriginal = new Runnable() {
             public void run() {
+                if (isFinishing() || isDestroyed()) return;
                 if (statusView != null) statusView.setText("Original recording saved. Finished export was unavailable; review the original clip.");
                 showVideoReview(clip);
             }
