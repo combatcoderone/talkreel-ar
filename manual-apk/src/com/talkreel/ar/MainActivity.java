@@ -752,7 +752,7 @@ public class MainActivity extends Activity {
         final Spinner ar = new Spinner(this); String[] effects = new String[ProFrameView.FILTER_COUNT];
         for(int i=0;i<effects.length;i++) effects[i]=ProFrameView.filterName(i);
         ar.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, effects));
-        ar.setSelection(AppState.arFilter); form.addView(settingsLabel("AR / makeup preview")); form.addView(ar);
+        ar.setSelection(AppState.arFilter); form.addView(settingsLabel("AR / makeup effect")); form.addView(ar);
         final Spinner music = new Spinner(this); String[] tracks = new String[MusicCatalog.TRACKS.length];
         for(int i=0;i<tracks.length;i++) tracks[i]=MusicCatalog.TRACKS[i].title;
         music.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, tracks));
