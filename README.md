@@ -282,9 +282,9 @@ is wired in v0.7.0.
 The feature branch now includes:
 - Unity face-effect transform smoothing for the AR Foundation prototype.
 - Native Camera2 face-detection capability negotiation (FULL when supported, otherwise SIMPLE), plus smoothed preview rectangles and brief dropout tolerance. This remains a fallback, not landmark-grade face tracking.
-- Android system Picture-in-Picture with saved 9:16, 1:1 and 16:9 frame presets. Android controls the floating window's position and user resize gestures.
+- Draggable, resizable in-app selfie preview that stays visible while scrolling/editing, plus Android system Picture-in-Picture with saved 9:16, 1:1 and 16:9 window presets.
 - Music catalog search by title, artist, mood and use case, plus playback volume control.
 
-The PiP feature is Android system PiP, not yet an in-app floating mini-window over TalkReel's own controls. The current music catalog remains nine tracks; no unverified audio URLs have been added. Music is still not mixed into exported MP4 files. See [docs/CREATOR-EXPERIENCE.md](docs/CREATOR-EXPERIENCE.md) for architecture and device validation gates.
+The in-app floating preview is intended for using TalkReel controls while recording; Android system PiP keeps the preview visible while switching to other apps. The current music catalog remains nine verified tracks; search and volume controls are added, but no unverified audio URLs have been added. Music is still not mixed into exported MP4 files. See [docs/CREATOR-EXPERIENCE.md](docs/CREATOR-EXPERIENCE.md) for architecture and device validation gates.
 
 These changes have not yet been compiled or tested on physical Android devices. Do not treat the branch as a release APK.
