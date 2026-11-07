@@ -90,6 +90,37 @@ public class MusicEngine {
         }
     }
 
+    // Play a user-selected audio document. The Storage Access Framework URI
+    // permission is persisted by MainActivity before this method is called.
+    public static void playUri(final Context context, final android.net.Uri uri, final boolean loop, final Handler mainHandler, final Callback cb) {
+        stop();
+        if (uri == null) {
+            if (cb != null) mainHandler.post(new Runnable() { public void run() { cb.onResult(false, "No audio file selected."); } });
+            return;
+        }
+        try {
+            player = new MediaPlayer();
+            player.setLooping(loop);
+            player.setVolume(volume, volume);
+            player.setDataSource(context, uri);
+            player.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
+                public void onPrepared(MediaPlayer mp) {
+                    try { mp.start(); playingTitle = "Your audio"; } catch (Exception ignored) {}
+                    if (cb != null) mainHandler.post(new Runnable() { public void run() { cb.onResult(true, "Playing your selected audio."); } });
+                }
+            });
+            player.setOnErrorListener(new MediaPlayer.OnErrorListener() {
+                public boolean onError(MediaPlayer mp, int what, int extra) {
+                    if (cb != null) mainHandler.post(new Runnable() { public void run() { cb.onResult(false, "Could not play this audio file. Choose an MP3, M4A or WAV file."); } });
+                    return true;
+                }
+            });
+            player.prepareAsync();
+        } catch (final Exception e) {
+            if (cb != null) mainHandler.post(new Runnable() { public void run() { cb.onResult(false, "Could not open audio: " + e.getMessage()); } });
+        }
+    }
+
     // Download a track locally, on a background thread.
     public static void download(final Context context, final MusicCatalog.Track track, final Handler mainHandler, final Callback cb) {
         new Thread(new Runnable() {
