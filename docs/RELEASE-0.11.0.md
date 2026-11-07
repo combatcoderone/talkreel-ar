@@ -82,3 +82,24 @@ on a physical device.
 - Music catalog search, volume adjustment, persisted user-selected audio URI, and custom audio looping for the next recording are included.
 - AR Studio uses the existing ARCore Augmented Faces renderer (front camera, 468-point mesh). The AR Studio view is preview-only; the mesh is not encoded into the saved MP4.
 - Device acceptance must include float drag/resize while scrolling, PiP enter/exit at different scroll positions, custom audio permission persistence and playback, catalog search, and regression testing for record/pause/resume/stop.
+
+
+## GPU compositor integration (source change; validation pending)
+
+- `ArCompositor` owns the camera input `SurfaceTexture`, an EGL preview output, and an optional EGL output targeting the `MediaRecorder` video surface.
+- Camera2 now targets the compositor input surface rather than writing directly to the TextureView and encoder surfaces.
+- The compositor draws each timestamped camera frame to the preview and encoder outputs. The same GPU color treatment and approximate face-rectangle effect are therefore included in the encoded video pixels.
+- EGL setup, frame callbacks, camera-session changes, encoder-surface attach/detach, and teardown are serialized on the camera handler.
+- Face rectangles from Camera2 statistics are passed to the shader. These are coarse rectangles, not ARCore mesh landmarks. The separate ARCore Studio Activity is not yet connected to this compositor.
+- `MediaRecorder` still owns microphone audio and AAC muxing. Selected music still plays through the phone output; clean digital music mixing is not implemented.
+
+### Additional release checks
+
+- Confirm the effect seen in the preview is visible in decoded MP4 frames.
+- Verify front camera mirror behavior and rear camera orientation in both preview and exported video.
+- Verify output aspect ratio and crop at each export preset.
+- Exercise repeated record/stop cycles, camera surface recreation, app backgrounding, and camera contention.
+- Check for EGL errors, dropped frames, thermal throttling, and memory leaks on lower-tier and recent devices.
+- Confirm a failed/very-short recording never appears as a valid saved clip.
+
+Do not claim the compositor is verified until Gradle build, CI, and physical-device export tests pass.
