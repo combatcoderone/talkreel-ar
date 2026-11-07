@@ -742,21 +742,82 @@ public class MainActivity extends Activity {
             }).show();
     }
     private void showTemplates() {
-        SharedPreferences p=getSharedPreferences("talkreel_templates",MODE_PRIVATE);
-        java.util.ArrayList<String> names=new java.util.ArrayList<String>();
-        for(String k:p.getAll().keySet()) if(k.startsWith("template:")) names.add(k.substring(9));
-        if(names.isEmpty()) { Toast.makeText(this,"No templates saved yet.",Toast.LENGTH_LONG).show(); return; }
-        final String[] items=names.toArray(new String[names.size()]);
-        new AlertDialog.Builder(this).setTitle("Apply template").setItems(items,(d,which)->{
-            try {
-                JSONObject o=new JSONObject(p.getString("template:"+items[which],"{}"));
-                applyCreatorSettings(o.optString("script",AppState.script),o.optInt("size",26),o.optInt("ar",0),
-                    o.optInt("music",0),o.optInt("shape",0),(float)o.optDouble("speed",1.0));
-                useMusic = o.optBoolean("musicEnabled", false);
-                if (musicToggleButton != null) musicToggleButton.setText(useMusic ? "Music in recording: On" : "Music in recording: Off");
-                savePrefs();
-            } catch(Exception e) { Toast.makeText(this,"Template could not be loaded.",Toast.LENGTH_LONG).show(); }
-        }).setNegativeButton("Cancel",null).show();
+        final SharedPreferences prefs = getSharedPreferences("talkreel_templates", MODE_PRIVATE);
+        final java.util.ArrayList<String> names = new java.util.ArrayList<String>();
+        names.add("Default");
+        for (String key : prefs.getAll().keySet()) {
+            if (key.startsWith("template:")) names.add(key.substring(9));
+        }
+        final String[] items = names.toArray(new String[names.size()]);
+        new AlertDialog.Builder(this).setTitle("Templates").setItems(items, (d, which) -> {
+            final String selected = items[which];
+            if ("Default".equals(selected)) {
+                new AlertDialog.Builder(this).setTitle("Default template")
+                        .setMessage("Restore the built-in starter setup?")
+                        .setNegativeButton("Cancel", null)
+                        .setPositiveButton("Apply", (dd, ww) -> {
+                            AppState.script = "";
+                            useMusic = false;
+                            applyCreatorSettings("", 26, ProFrameView.FILTER_GUIDE, 0, 0, 1.0f);
+                            savePrefs();
+                            Toast.makeText(this, "Default template applied.", Toast.LENGTH_SHORT).show();
+                        }).show();
+                return;
+            }
+            final String[] actions = {"Apply", "Update with current settings", "Duplicate", "Delete"};
+            new AlertDialog.Builder(this).setTitle(selected).setItems(actions, (ad, action) -> {
+                try {
+                    final String key = "template:" + selected;
+                    JSONObject stored = new JSONObject(prefs.getString(key, "{}"));
+                    if (action == 0) {
+                        applyCreatorSettings(stored.optString("script", AppState.script), stored.optInt("size", 26),
+                                stored.optInt("ar", 0), stored.optInt("music", 0), stored.optInt("shape", 0),
+                                (float) stored.optDouble("speed", 1.0));
+                        useMusic = stored.optBoolean("musicEnabled", false);
+                        if (musicToggleButton != null) musicToggleButton.setText(useMusic ? "Music in recording: On" : "Music in recording: Off");
+                        savePrefs();
+                    } else if (action == 1) {
+                        JSONObject updated = new JSONObject();
+                        updated.put("schemaVersion", 1);
+                        updated.put("script", scriptEdit.getText().toString());
+                        updated.put("size", teleprompterTextSize);
+                        updated.put("ar", AppState.arFilter);
+                        updated.put("music", musicTrackIndex);
+                        updated.put("musicEnabled", useMusic);
+                        updated.put("shape", selfieFrameShape);
+                        updated.put("speed", AppState.speed);
+                        prefs.edit().putString(key, updated.toString()).apply();
+                        Toast.makeText(this, "Template updated: " + selected, Toast.LENGTH_SHORT).show();
+                    } else if (action == 2) {
+                        final EditText name = new EditText(this);
+                        name.setSingleLine(true);
+                        name.setHint("New template name");
+                        new AlertDialog.Builder(this).setTitle("Duplicate " + selected).setView(name)
+                                .setNegativeButton("Cancel", null)
+                                .setPositiveButton("Duplicate", (dd, ww) -> {
+                                    String newName = name.getText().toString().trim();
+                                    if (newName.isEmpty() || "Default".equalsIgnoreCase(newName) ||
+                                            prefs.contains("template:" + newName)) {
+                                        Toast.makeText(this, "Enter a unique template name.", Toast.LENGTH_LONG).show();
+                                        return;
+                                    }
+                                    prefs.edit().putString("template:" + newName, stored.toString()).apply();
+                                    Toast.makeText(this, "Template duplicated: " + newName, Toast.LENGTH_SHORT).show();
+                                }).show();
+                    } else if (action == 3) {
+                        new AlertDialog.Builder(this).setTitle("Delete " + selected + "?")
+                                .setMessage("This cannot be undone.")
+                                .setNegativeButton("Cancel", null)
+                                .setPositiveButton("Delete", (dd, ww) -> {
+                                    prefs.edit().remove(key).apply();
+                                    Toast.makeText(this, "Template deleted.", Toast.LENGTH_SHORT).show();
+                                }).show();
+                    }
+                } catch (Exception e) {
+                    Toast.makeText(this, "Template action failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                }
+            }).setNegativeButton("Cancel", null).show();
+        }).setNegativeButton("Cancel", null).show();
     }
     private void showVideoReview(final File clip) {
         if (clip == null || !clip.exists() || clip.length() == 0) return;
