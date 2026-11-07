@@ -80,8 +80,7 @@ public class TalkReelService extends Service {
         Notification.Builder b;
         if (Build.VERSION.SDK_INT >= 26) b = new Notification.Builder(this, channelId);
         else b = new Notification.Builder(this);
-        boolean recording = AppState.isRecording || (foregroundType & (android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
-                | android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)) != 0;
+        boolean recording = AppState.isRecording;
         Notification n = b.setContentTitle("TalkReel AR")
             .setContentText(recording ? "Recording is active. Tap to return to TalkReel." : "Floating teleprompter is active. Tap to return.")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
