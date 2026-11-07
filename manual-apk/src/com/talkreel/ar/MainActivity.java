@@ -613,6 +613,20 @@ public class MainActivity extends Activity {
         // Scrolling remains enabled; only scrollbar rendering is disabled.
         outer.addView(root);
         setContentView(outer);
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            getWindow().setDecorFitsSystemWindows(false);
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 35) {
+            outer.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+                public android.view.WindowInsets onApplyWindowInsets(View view, android.view.WindowInsets insets) {
+                    android.graphics.Insets bars = insets.getInsets(
+                            android.view.WindowInsets.Type.systemBars()
+                                    | android.view.WindowInsets.Type.displayCutout());
+                    view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+                    return insets;
+                }
+            });
+        }
 
         textureView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
             public void onSurfaceTextureAvailable(SurfaceTexture s, int w, int h) {
