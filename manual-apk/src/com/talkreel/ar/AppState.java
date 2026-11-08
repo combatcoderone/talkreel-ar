@@ -13,7 +13,7 @@ public class AppState {
     public static volatile boolean isPaused = false;
     public static volatile int seconds = 0;
     public static volatile boolean showFrame = true;
-    // Snapchat-inspired live-preview face effect.
+    // Restrained camera color looks; no novelty face stickers.
     public static volatile int arFilter = ProFrameView.FILTER_GUIDE;
     public static volatile boolean faceFound = false;
     public static volatile float speed = 1.0f;
