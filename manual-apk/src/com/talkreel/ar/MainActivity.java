@@ -744,7 +744,7 @@ public class MainActivity extends Activity {
     private void applyCreatorSettings(String script, int size, int ar, int music, int shape, float speed) {
         AppState.script = script; scriptEdit.setText(script); teleprompterView.setText(script);
         teleprompterTextSize = size; teleprompterView.setTextSize(size);
-        AppState.arFilter = ar; frameView.setFilter(ar); if (arCompositor != null) arCompositor.setFilter(ar);
+        AppState.arFilter = ar; frameView.setFilter(ar); if (arCompositor != null) arCompositor.setFilter(ar % 6);
         musicTrackIndex = Math.max(0, Math.min(music, MusicCatalog.TRACKS.length - 1));
         selfieFrameShape = shape; frameView.setFrameShape(shape);
         AppState.speed = speed; savePrefs();
@@ -1622,7 +1622,7 @@ public class MainActivity extends Activity {
                     recorder.prepare();
                     final File savedOutput = output;
                     final Surface recorderSurface = recorder.getSurface();
-                    arCompositor.setFilter(AppState.arFilter);
+                    arCompositor.setFilter(AppState.arFilter % 6);
                     arCompositor.setEncoderSurface(recorderSurface);
                     final Surface cameraInput = arCompositor.getCameraInputSurface();
                     if (cameraInput == null) throw new IllegalStateException("AR camera input is unavailable.");
