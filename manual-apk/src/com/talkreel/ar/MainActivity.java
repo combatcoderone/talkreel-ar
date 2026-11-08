@@ -1547,6 +1547,11 @@ public class MainActivity extends Activity {
                     if (faceImageReader != null) {
                         try { faceImageReader.close(); } catch (Exception ignored) {}
                         faceImageReader = null;
+                        if (arCompositor != null) {
+                            try { arCompositor.stop(); } catch (Exception ignored) {}
+                            arCompositor = null;
+                        }
+                        if (frameView != null) frameView.clearFaces();
                         mainHandler.post(new Runnable() {
                             public void run() {
                                 if (coachView != null) coachView.setText("Face contour analysis is not supported by this camera stream.");
