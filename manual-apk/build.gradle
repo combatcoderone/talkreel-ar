@@ -16,14 +16,15 @@ android {
         applicationId 'com.talkreel.ar'
         minSdk 26
         targetSdk 36
-        versionCode 16
-        versionName '0.9.5'
+        versionCode 17
+        versionName '0.9.6'
     }
     sourceSets {
         main {
             manifest.srcFile 'AndroidManifest.xml'
             java.srcDirs = ['src']
             res.srcDirs = ['res']
+            assets.srcDir("$buildDir/generated/mediapipeAssets")
         }
     }
     signingConfigs {
@@ -55,5 +56,32 @@ dependencies {
     implementation 'androidx.media3:media3-effect:1.11.1'
     implementation 'androidx.media3:media3-common:1.11.1'
     // Bundled on-device model: no first-launch model download required.
-    implementation 'com.google.mlkit:face-detection:16.1.7'
+    implementation 'com.google.mediapipe:tasks-vision:1.1.1'
 }
+
+ 
+// Fetch the official Face Landmarker bundle at build time. The model is packaged
+// in the APK so face tracking works offline after installation.
+def faceLandmarkerModel = file("$buildDir/generated/mediapipeAssets/face_landmarker.task")
+tasks.register("downloadFaceLandmarkerModel") {
+    outputs.file(faceLandmarkerModel)
+    doLast {
+        if (!faceLandmarkerModel.exists() || faceLandmarkerModel.length() < 1000000L) {
+            faceLandmarkerModel.parentFile.mkdirs()
+            def temporary = new File(faceLandmarkerModel.parentFile, "face_landmarker.task.download")
+            new URL("https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task").withInputStream { input ->
+                temporary.withOutputStream { output -> output << input }
+            }
+            if (temporary.length() < 1000000L) {
+                temporary.delete()
+                throw new GradleException("Face Landmarker model download was incomplete.")
+            }
+            if (faceLandmarkerModel.exists()) faceLandmarkerModel.delete()
+            if (!temporary.renameTo(faceLandmarkerModel)) {
+                temporary.delete()
+                throw new GradleException("Could not install Face Landmarker model asset.")
+            }
+        }
+    }
+}
+tasks.named("preBuild").configure { dependsOn("downloadFaceLandmarkerModel") }
