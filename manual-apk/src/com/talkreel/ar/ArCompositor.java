@@ -21,7 +21,7 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         "uniform mat4 uTexMatrix; uniform mat4 uOrientationMatrix; varying vec2 vTexCoord; " +
         "void main(){ gl_Position=aPosition; vTexCoord=(uTexMatrix*uOrientationMatrix*vec4(aTexCoord,0.0,1.0)).xy; }";
     private static final String FRAGMENT =
-        "#extension GL_OES_EGL_image_external : require\\n" +
+        "#extension GL_OES_EGL_image_external : require\n" +
         "precision mediump float; varying vec2 vTexCoord; " +
         "uniform samplerExternalOES sTexture; uniform int uFilter; " +
         "void main(){ vec3 c=texture2D(sTexture,vTexCoord).rgb; " +
