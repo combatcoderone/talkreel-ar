@@ -6,14 +6,14 @@ package com.talkreel.ar;
 // a request by broadcast. That was the v0.5 open/close bug:
 // the overlay set isRecording and MainActivity set it again,
 // so Record became Stop, and Stop did nothing.
-// Basic AR is removed. No Beauty, Cartoon, Animal, Glasses,
-// Glow, or Circle filter. Framing is a clean Pro guide only.
+// Face effects are rendered by the shared GPU compositor so preview and
+// camera recording use the same tracked geometry.
 public class AppState {
     public static volatile boolean isRecording = false;
     public static volatile boolean isPaused = false;
     public static volatile int seconds = 0;
     public static volatile boolean showFrame = true;
-    // Restrained camera color looks; no novelty face stickers.
+    // Selected face-tracked makeup, Halloween or accessory preset (0..29).
     public static volatile int arFilter = ProFrameView.FILTER_GUIDE;
     public static volatile boolean faceFound = false;
     public static volatile float speed = 1.0f;
