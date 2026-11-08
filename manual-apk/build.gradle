@@ -23,6 +23,8 @@ android {
         main {
             manifest.srcFile 'AndroidManifest.xml'
             java.srcDirs = ['src']
+            // Keep JVM tests in Gradle's test source set, not the Android app source set.
+            java.exclude '**/test/**'
             res.srcDirs = ['res']
             assets.srcDir("$buildDir/generated/mediapipeAssets")
         }
