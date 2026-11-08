@@ -7,6 +7,7 @@ import android.opengl.GLES11Ext;
 import android.opengl.GLES20;
 import android.view.Surface;
 import android.os.Handler;
+import android.util.Log;
 
 /**
  * Camera-to-encoder GPU bridge. Camera2 writes to the input SurfaceTexture;
@@ -23,8 +24,8 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     private static final String FRAGMENT =
         "#extension GL_OES_EGL_image_external : require\n" +
         "precision mediump float; varying vec2 vTexCoord; " +
-        "uniform samplerExternalOES sTexture; uniform int uFilter; uniform vec4 uFaceRect; uniform int uHasFace; uniform int uMirror; " +
-        "void main(){ vec4 c=texture2D(sTexture,vTexCoord); " +
+        "uniform samplerExternalOES sTexture; uniform int uFilter; uniform vec4 uFaceRect; uniform int uHasFace; uniform int uMirror; uniform float uFaceConfidence; uniform int uAutoLight; " +
+        "void main(){ vec4 c=texture2D(sTexture,vTexCoord); vec2 q=vec2(vTexCoord.x,1.0-vTexCoord.y); if(uMirror==1) q.x=1.0-q.x; float faceMask=0.0; if(uHasFace==1){ float inside=step(uFaceRect.x,q.x)*step(q.x,uFaceRect.z)*step(uFaceRect.y,q.y)*step(q.y,uFaceRect.w); float edge=min(min(q.x-uFaceRect.x,uFaceRect.z-q.x),min(q.y-uFaceRect.y,uFaceRect.w-q.y)); faceMask=inside*(1.0-smoothstep(0.0,0.035,edge)); } if(uAutoLight==1){ float y=dot(c.rgb,vec3(.299,.587,.114)); float shadow=1.0-smoothstep(.10,.48,y); float gain=clamp(.46/max(y,.15),.90,1.16); float lift=shadow*.075*faceMask*uFaceConfidence; c.rgb=min(vec3(1.0),c.rgb*(1.0+(gain-1.0)*.38*faceMask*uFaceConfidence)+vec3(lift)); float hi=max(0.0,dot(c.rgb,vec3(.299,.587,.114))-.82); c.rgb=max(vec3(0.0),c.rgb-vec3(hi*.16)); } " +
         "if(uFilter==1){ c.rgb=mix(c.rgb,vec3(dot(c.rgb,vec3(.299,.587,.114))),.08); c.rgb=min(vec3(1.0),c.rgb*1.10+vec3(.025)); } " +
         "else if(uFilter==2){ c.rgb=mix(c.rgb,vec3(.12,.24,.34),.12); } " +
         "else if(uFilter==3){ c.rgb=mix(c.rgb,vec3(.95,.56,.68),.08); } " +
@@ -35,7 +36,7 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         "else if(uFilter==8){ c.rgb=mix(c.rgb,vec3(.10,.12,.16),.12); } " +
         "else if(uFilter==9){ c.rgb=mix(c.rgb,vec3(.72,.45,.22),.08); } " +
         "else if(uFilter==10){ c.rgb=mix(c.rgb,vec3(.62,.39,.22),.10); } " +
-        "if(uHasFace==1 && uFilter>=2 && uFilter<=10){ vec2 q=vec2(vTexCoord.x,1.0-vTexCoord.y); if(uMirror==1) q.x=1.0-q.x; vec2 sz=uFaceRect.zw-uFaceRect.xy; vec2 ctr=(uFaceRect.xy+uFaceRect.zw)*.5; " +
+        "vec3 filteredBase=c.rgb; if(uHasFace==1 && uFilter>=2 && uFilter<=10){ vec2 sz=uFaceRect.zw-uFaceRect.xy; vec2 ctr=(uFaceRect.xy+uFaceRect.zw)*.5; " +
         "if(uFilter==2){ vec2 e=ctr+vec2(0.,-sz.y*.10); vec2 l=(q-(e+vec2(-sz.x*.23,0.)))/vec2(sz.x*.20,sz.y*.105); vec2 r=(q-(e+vec2(sz.x*.23,0.)))/vec2(sz.x*.20,sz.y*.105); if(dot(l,l)<1.0||dot(r,r)<1.0)c.rgb=mix(c.rgb,vec3(.08,.55,.92),.68); } " +
         "if(uFilter==3){ vec2 l=(q-(ctr+vec2(-sz.x*.27,-sz.y*.64)))/vec2(sz.x*.13,sz.y*.34); vec2 r=(q-(ctr+vec2(sz.x*.27,-sz.y*.64)))/vec2(sz.x*.13,sz.y*.34); if(dot(l,l)<1.0||dot(r,r)<1.0)c.rgb=mix(c.rgb,vec3(1.0,.55,.72),.88); } " +
         "if(uFilter==4 && q.y<ctr.y-sz.y*.56 && q.y>ctr.y-sz.y*1.02 && abs(q.x-ctr.x)<sz.x*.5)c.rgb=mix(c.rgb,vec3(1.0,.72,.08),.95); " +
@@ -44,7 +45,7 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         "if(uFilter==8 && abs(q.x-ctr.x)<sz.x*.48 && q.y>ctr.y-sz.y*.48 && q.y<ctr.y+sz.y*.48){ c.rgb=mix(c.rgb,vec3(.16,.18,.22),.40); } " +
         "if(uFilter==9 && q.y<ctr.y-sz.y*.52 && q.y>ctr.y-sz.y*1.0 && abs(q.x-ctr.x)<sz.x*.5){ c.rgb=mix(c.rgb,vec3(.20,.12,.08),.92); } " +
         "if(uFilter==10 && q.y<ctr.y-sz.y*.28 && q.y>ctr.y-sz.y*.95 && abs(q.x-ctr.x)<sz.x*.62){ c.rgb=mix(c.rgb,vec3(.45,.24,.12),.82); } " +
-        "} gl_FragColor=c; }";
+        "} c.rgb=mix(filteredBase,c.rgb,uFaceConfidence); gl_FragColor=c; }";
 
     private final Handler handler;
     private EGLDisplayHolder egl;
@@ -58,10 +59,13 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     private int guidePositionLoc, guideColorLoc;
     private volatile int frameShape;
     private volatile int filter;
-    private int positionLoc, texCoordLoc, matrixLoc, filterLoc, faceRectLoc, hasFaceLoc, mirrorLoc, samplerLoc;
+    private int positionLoc, texCoordLoc, matrixLoc, filterLoc, faceRectLoc, hasFaceLoc, mirrorLoc, samplerLoc, faceConfidenceLoc, autoLightLoc;
     private java.nio.FloatBuffer vertexBuffer, texBuffer;
     private volatile float faceLeft, faceTop, faceRight, faceBottom;
     private volatile boolean hasFace, mirrorFace;
+    private volatile float faceConfidence = 0f;
+    private volatile boolean autoLighting = true;
+    private long lastEglErrorLogMs;
     private final float[] transform = new float[16];
     private boolean released;
 
@@ -95,6 +99,8 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         faceRectLoc=GLES20.glGetUniformLocation(program,"uFaceRect");
         hasFaceLoc=GLES20.glGetUniformLocation(program,"uHasFace");
         mirrorLoc=GLES20.glGetUniformLocation(program,"uMirror");
+        faceConfidenceLoc=GLES20.glGetUniformLocation(program,"uFaceConfidence");
+        autoLightLoc=GLES20.glGetUniformLocation(program,"uAutoLight");
         samplerLoc=GLES20.glGetUniformLocation(program,"sTexture");
         float[] vertices={-1,-1, 1,-1, -1,1, 1,1};
         float[] tex={0,1, 1,1, 0,0, 1,0};
@@ -115,10 +121,16 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     void setFilter(int value) { filter=value; }
     void setFrameShape(int value) { frameShape=Math.max(0,Math.min(3,value)); }
     void setFaceRect(float left,float top,float right,float bottom,boolean mirrored) {
-        faceLeft=left; faceTop=top; faceRight=right; faceBottom=bottom;
-        mirrorFace=mirrored; hasFace=right>left && bottom>top;
+        setFaceRect(left, top, right, bottom, mirrored, 1f);
     }
-    void clearFace() { hasFace=false; }
+    void setFaceRect(float left,float top,float right,float bottom,boolean mirrored,float confidence) {
+        faceLeft=left; faceTop=top; faceRight=right; faceBottom=bottom;
+        mirrorFace=mirrored;
+        faceConfidence=CameraTransform.clamp(confidence, 0f, 1f);
+        hasFace=right>left && bottom>top && faceConfidence>0.08f;
+    }
+    void setAutoLighting(boolean enabled) { autoLighting=enabled; }
+    void clearFace() { hasFace=false; faceConfidence=0f; }
 
     Surface getCameraInputSurface() { return cameraInput; }
 
@@ -130,11 +142,17 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
             long timestamp=cameraTexture.getTimestamp();
             draw(previewEgl,timestamp);
             if(encoderEgl!=null) draw(encoderEgl,timestamp);
-        } catch (RuntimeException ignoredError) { }
+        } catch (RuntimeException error) {
+            logEglFailure("frame callback", error.getMessage());
+        }
     }
 
     private void draw(EGL14Surface target,long timestamp) {
-        if(target==null || !target.makeCurrent()) return;
+        if(target==null) return;
+        if(!target.makeCurrent()) {
+            logEglFailure("eglMakeCurrent", "error=0x" + Integer.toHexString(EGL14.eglGetError()));
+            return;
+        }
         GLES20.glViewport(0,0,target.width,target.height);
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
         GLES20.glUseProgram(program);
@@ -144,6 +162,8 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         GLES20.glUniform1i(filterLoc,filter);
         GLES20.glUniform1i(hasFaceLoc,hasFace?1:0);
         GLES20.glUniform1i(mirrorLoc,mirrorFace?1:0);
+        GLES20.glUniform1f(faceConfidenceLoc,faceConfidence);
+        GLES20.glUniform1i(autoLightLoc,autoLighting?1:0);
         GLES20.glUniform4f(faceRectLoc,faceLeft,faceTop,faceRight,faceBottom);
         GLES20.glUniformMatrix4fv(matrixLoc,1,false,transform,0);
         vertexBuffer.position(0);
@@ -156,8 +176,20 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         GLES20.glDisableVertexAttribArray(positionLoc);
         GLES20.glDisableVertexAttribArray(texCoordLoc);
         if(target==encoderEgl) drawEncodedGuides();
-        if(target==encoderEgl && timestamp>0) EGLExt.eglPresentationTimeANDROID(egl.display,target.surface,timestamp);
-        EGL14.eglSwapBuffers(egl.display,target.surface);
+        if(target==encoderEgl && timestamp>0
+                && !EGLExt.eglPresentationTimeANDROID(egl.display,target.surface,timestamp)) {
+            logEglFailure("eglPresentationTimeANDROID", "error=0x" + Integer.toHexString(EGL14.eglGetError()));
+        }
+        if(!EGL14.eglSwapBuffers(egl.display,target.surface)) {
+            logEglFailure("eglSwapBuffers", "error=0x" + Integer.toHexString(EGL14.eglGetError()));
+        }
+    }
+
+    private void logEglFailure(String operation, String detail) {
+        long now = android.os.SystemClock.uptimeMillis();
+        if(now - lastEglErrorLogMs < 1000) return;
+        lastEglErrorLogMs = now;
+        Log.w("TalkReelAR", operation + " failed: " + detail);
     }
 
     void stop() {
