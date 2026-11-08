@@ -1,5 +1,5 @@
 name: Android APK build
-# Gradle is required for bundled ML Kit face contours and Media3 dependencies.
+# Gradle is required for bundled MediaPipe 3D face landmarks and Media3 dependencies.
 
 on:
   push:
@@ -37,7 +37,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Build and verify APK with ML Kit and Media3
+      - name: Build and verify APK with MediaPipe and Media3
         working-directory: manual-apk
         run: |
           gradle --no-daemon assembleDebug
@@ -49,7 +49,7 @@ jobs:
       - name: Upload tester APK
         uses: actions/upload-artifact@v4
         with:
-          name: talkreel-ar-v0.9.5-apk
+          name: talkreel-ar-v0.9.6-ar-renderer-apk
           path: manual-apk/app-debug.apk
           if-no-files-found: error
           retention-days: 30
@@ -78,7 +78,7 @@ jobs:
       - name: Upload Media3-enabled APK
         uses: actions/upload-artifact@v4
         with:
-          name: talkreel-ar-media3-debug-apk
+          name: talkreel-ar-v0.9.6-media3-debug-apk
           path: manual-apk/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
