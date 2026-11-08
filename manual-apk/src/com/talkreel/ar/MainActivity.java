@@ -1451,6 +1451,7 @@ public class MainActivity extends Activity {
             if (arCompositor == null) arCompositor = new ArCompositor(cameraHandler);
             Surface cameraSurface = arCompositor.start(texture, 720, 1280);
             arCompositor.setFilter(AppState.arFilter);
+            arCompositor.setFrameShape(frameView == null ? selfieFrameShape : frameView.getFrameShape());
             if (captureSession != null) {
                 try { captureSession.close(); } catch (Exception ignored) {}
                 captureSession = null;
