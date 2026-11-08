@@ -138,7 +138,7 @@ final class FaceTrackSmoother {
     }
 
     private static PointF smoothPoint(PointF oldPoint, PointF next, float alpha) {
-        if (next == null) return oldPoint;
+        if (next == null) return null;
         if (oldPoint == null) return new PointF(next.x, next.y);
         return new PointF(lerp(oldPoint.x, next.x, alpha), lerp(oldPoint.y, next.y, alpha));
     }
