@@ -107,3 +107,12 @@ The AAB is still a release *candidate*, not a release: physical-device acceptanc
 - Face detections are now re-associated between frames by nearest face-center matching before temporal smoothing. This avoids blending the previous frame's landmark history into a different person when MediaPipe changes the ordering of up to three simultaneous detections.
 - This is a tracking-stability improvement, not persistent biometric identity tracking. A face that disappears and re-enters the frame receives a new smoothing history.
 - The renderer remains a 2D GPU overlay system. The 3D landmark z-coordinate and pose matrices are retained in the frame payload but are not yet a complete 3D asset/occlusion pipeline.
+
+
+## AR tracking hardening follow-up
+
+- Multi-face temporal smoothing now associates each incoming detection with the nearest prior face center before blending landmark history. This prevents detector result reordering from mixing two people's landmark meshes.
+- The association logic is isolated in a pure-Java helper and has JVM tests for reordered detections, unmatched/new faces and center calculation. Android CI now runs `testDebugUnitTest` before packaging.
+- Face-anchored cheek accents, cat/bunny ears and halo dimensions scale with measured inter-temple distance, reducing screen-fixed sizing as the subject moves.
+- The camera coach/status line reports per-frame inference time in milliseconds to make tracking latency measurable during device QA.
+- These changes improve stability and diagnostics. They do not add rigged 3D assets, face segmentation, depth occlusion or physical-device certification.
