@@ -92,11 +92,13 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     }
 
     void setFilter(int value) { filter=value; }
-    void setCameraOrientation(int degrees) {
+    void setCameraOrientation(int degrees) { setCameraOrientation(degrees, false); }
+    void setCameraOrientation(int degrees, boolean mirror) {
         checkThread();
         int rotation=((degrees%360)+360)%360;
         android.opengl.Matrix.setIdentityM(orientationMatrix,0);
         android.opengl.Matrix.translateM(orientationMatrix,0,0.5f,0.5f,0f);
+        if (mirror) android.opengl.Matrix.scaleM(orientationMatrix,0,-1f,1f,1f);
         android.opengl.Matrix.rotateM(orientationMatrix,0,rotation,0f,0f,1f);
         android.opengl.Matrix.translateM(orientationMatrix,0,-0.5f,-0.5f,0f);
     }
