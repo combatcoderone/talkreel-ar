@@ -53,7 +53,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: talkreel-ar-v0.9.3-apk
+          name: talkreel-ar-v0.9.4-apk
           path: manual-apk/app-debug.apk
           if-no-files-found: error
           retention-days: 30
