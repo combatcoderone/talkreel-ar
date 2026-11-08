@@ -67,4 +67,4 @@ public class ProFrameView extends View {
         else if(frameShape==3) c.drawRoundRect(new RectF(cx-fw*.40f,cy-fh*.50f,cx+fw*.40f,cy+fh*.50f),24,24,p);
         else c.drawRoundRect(frame,24,24,p);
     }
-}}
+}
