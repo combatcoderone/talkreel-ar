@@ -44,6 +44,9 @@ public final class FaceTrackingEngine implements AutoCloseable {
     private volatile boolean closed;
     private FaceLandmarker landmarker;
     private long lastTimestamp;
+    // Reuse the CPU conversion buffer and bitmap to avoid a full-frame allocation per inference.
+    private int[] pixelBuffer;
+    private Bitmap rawBitmap;
     // Previous meshes are re-associated by face center each frame. MediaPipe's
     // result order is not a persistent identity when multiple people are visible.
     private final float[][] previous=new float[3][];
@@ -151,14 +154,13 @@ public final class FaceTrackingEngine implements AutoCloseable {
             if(!closed&&listener!=null)listener.onError("Face tracking frame failed: "+e.getMessage());
         } finally {
             if(input!=null)try{input.close();}catch(Exception ignored){}
-            if(rotated!=null&&!rotated.isRecycled())rotated.recycle();
-            if(raw!=null&&!raw.isRecycled())raw.recycle();
+            if(rotated!=null && rotated!=rawBitmap && !rotated.isRecycled())rotated.recycle();
             try{image.close();}catch(Exception ignored){}
             busy.set(false);
         }
     }
 
-    private static Bitmap toBitmap(Image image) {
+    private Bitmap toBitmap(Image image) {
         int w=image.getWidth(),h=image.getHeight();
         Image.Plane[] p=image.getPlanes();
         ByteBuffer y=p[0].getBuffer().duplicate(),u=p[1].getBuffer().duplicate(),v=p[2].getBuffer().duplicate();
@@ -166,7 +168,11 @@ public final class FaceTrackingEngine implements AutoCloseable {
         int yr=p[0].getRowStride(),yp=p[0].getPixelStride();
         int ur=p[1].getRowStride(),up=p[1].getPixelStride();
         int vr=p[2].getRowStride(),vp=p[2].getPixelStride();
-        int[] pixels=new int[w*h];
+        if(pixelBuffer==null||pixelBuffer.length!=w*h)pixelBuffer=new int[w*h];
+        if(rawBitmap==null||rawBitmap.isRecycled()||rawBitmap.getWidth()!=w||rawBitmap.getHeight()!=h){
+            if(rawBitmap!=null&&!rawBitmap.isRecycled())rawBitmap.recycle();
+            rawBitmap=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);
+        }
         for(int row=0;row<h;row++)for(int col=0;col<w;col++){
             int yy=(y.get(row*yr+col*yp)&255)-16;
             int uu=(u.get((row>>1)*ur+(col>>1)*up)&255)-128;
@@ -175,11 +181,10 @@ public final class FaceTrackingEngine implements AutoCloseable {
             int r=clamp((298*c+409*vv+128)>>8);
             int g=clamp((298*c-100*uu-208*vv+128)>>8);
             int b=clamp((298*c+516*uu+128)>>8);
-            pixels[row*w+col]=0xff000000|(r<<16)|(g<<8)|b;
+            pixelBuffer[row*w+col]=0xff000000|(r<<16)|(g<<8)|b;
         }
-        Bitmap bitmap=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);
-        bitmap.setPixels(pixels,0,w,0,0,w,h);
-        return bitmap;
+        rawBitmap.setPixels(pixelBuffer,0,w,0,0,w,h);
+        return rawBitmap;
     }
     private static int clamp(int v){return Math.max(0,Math.min(255,v));}
 
@@ -203,6 +208,11 @@ public final class FaceTrackingEngine implements AutoCloseable {
 
     @Override public void close(){
         closed=true;
-        worker.post(()->{if(landmarker!=null){try{landmarker.close();}catch(Exception ignored){}landmarker=null;}thread.quitSafely();});
+        worker.post(()->{
+            if(landmarker!=null){try{landmarker.close();}catch(Exception ignored){}landmarker=null;}
+            if(rawBitmap!=null&&!rawBitmap.isRecycled()){rawBitmap.recycle();rawBitmap=null;}
+            pixelBuffer=null;
+            thread.quitSafely();
+        });
     }
 }
