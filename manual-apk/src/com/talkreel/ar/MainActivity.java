@@ -381,7 +381,7 @@ public class MainActivity extends Activity {
             public void onClick(View v) {
                 AppState.arFilter = (AppState.arFilter + 1) % ProFrameView.FILTER_COUNT;
                 frameView.setFilter(AppState.arFilter);
-                if (arCompositor != null) arCompositor.setFilter(AppState.arFilter % 6);
+                if (arCompositor != null) { arCompositor.setFilter(0); arCompositor.setEffect(AppState.arFilter); }
                 arFilterButton.setText("Look: " + ProFrameView.filterName(AppState.arFilter));
                 savePrefs();
                 statusView.setText("Look: " + ProFrameView.filterName(AppState.arFilter) + " · Face-tracked preview overlay");
@@ -744,7 +744,7 @@ public class MainActivity extends Activity {
     private void applyCreatorSettings(String script, int size, int ar, int music, int shape, float speed) {
         AppState.script = script; scriptEdit.setText(script); teleprompterView.setText(script);
         teleprompterTextSize = size; teleprompterView.setTextSize(size);
-        AppState.arFilter = ar; frameView.setFilter(ar); if (arCompositor != null) arCompositor.setFilter(ar % 6);
+        AppState.arFilter = ar; frameView.setFilter(ar); if (arCompositor != null) { arCompositor.setFilter(0); arCompositor.setEffect(ar); }
         musicTrackIndex = Math.max(0, Math.min(music, MusicCatalog.TRACKS.length - 1));
         selfieFrameShape = shape; frameView.setFrameShape(shape);
         AppState.speed = speed; savePrefs();
@@ -1319,23 +1319,34 @@ public class MainActivity extends Activity {
             }
             if (best == null) best = sizes[0];
             faceImageReader = ImageReader.newInstance(best.getWidth(), best.getHeight(),
-                    ImageFormat.YUV_420_888, 2);
+                    ImageFormat.YUV_420_888, 3);
             if (faceTrackingEngine == null) {
                 faceTrackingEngine = new FaceTrackingEngine(getApplicationContext(),
                         new FaceTrackingEngine.Listener() {
-                    @Override public void onFaces(final List<com.google.mlkit.vision.face.Face> faces,
+                    @Override public void onFaces(final FaceTrackingEngine.FaceFrame frame,
                                                   final int width, final int height) {
+                        if (cameraHandler != null) cameraHandler.post(new Runnable() {
+                            @Override public void run() {
+                                if (arCompositor != null && !activityDestroyed)
+                                    arCompositor.setFaceFrame(frame, isFrontCamera);
+                            }
+                        });
                         mainHandler.post(new Runnable() {
                             @Override public void run() {
-                                if (frameView != null && !activityDestroyed) {
-                                    int uprightWidth = (faceInputRotationDegrees % 180 == 90) ? height : width;
-                                    int uprightHeight = (faceInputRotationDegrees % 180 == 90) ? width : height;
-                                    frameView.setFaceResults(faces, uprightWidth, uprightHeight, 0, isFrontCamera);
-                                }
-                                if (coachView != null && !activityDestroyed)
-                                    coachView.setText(faces.isEmpty()
-                                            ? "Face not found · Move closer and face the camera"
-                                            : "Face tracking · " + faces.size() + (faces.size()==1?" face":" faces"));
+                                if (activityDestroyed) return;
+                                AppState.faceFound = frame != null && frame.faceCount() > 0;
+                                if (coachView != null) coachView.setText(!AppState.faceFound
+                                        ? "Face not found · Move closer and face the camera"
+                                        : "3D face tracking · " + frame.faceCount()
+                                                + (frame.faceCount()==1 ? " face · 478 landmarks" : " faces · 478 landmarks each"));
+                            }
+                        });
+                    }
+                    @Override public void onError(final String message) {
+                        mainHandler.post(new Runnable() {
+                            @Override public void run() {
+                                if (!activityDestroyed && coachView != null)
+                                    coachView.setText("Face tracking unavailable · " + message);
                             }
                         });
                     }
@@ -1352,6 +1363,12 @@ public class MainActivity extends Activity {
             }, cameraHandler);
         } catch (Exception error) {
             if (faceImageReader != null) { try { faceImageReader.close(); } catch (Exception ignored) {} faceImageReader = null; }
+            mainHandler.post(new Runnable() {
+                @Override public void run() {
+                    if (!activityDestroyed && coachView != null)
+                        coachView.setText("Face tracking setup failed · " + error.getMessage());
+                }
+            });
         }
     }
 
@@ -1518,7 +1535,8 @@ public class MainActivity extends Activity {
             if (texture == null) return;
             if (arCompositor == null) arCompositor = new ArCompositor(cameraHandler);
             Surface cameraSurface = arCompositor.start(texture, cameraBufferWidth, cameraBufferHeight);
-            arCompositor.setFilter(AppState.arFilter % 6);
+            arCompositor.setFilter(0);
+            arCompositor.setEffect(AppState.arFilter);
             arCompositor.setCameraOrientation(cameraRotationDegrees, isFrontCamera);
             if (captureSession != null) {
                 try { captureSession.close(); } catch (Exception ignored) {}
@@ -1644,7 +1662,8 @@ public class MainActivity extends Activity {
                     recorder.prepare();
                     final File savedOutput = output;
                     final Surface recorderSurface = recorder.getSurface();
-                    arCompositor.setFilter(AppState.arFilter % 6);
+                    arCompositor.setFilter(0);
+                    arCompositor.setEffect(AppState.arFilter);
                     arCompositor.setEncoderSurface(recorderSurface);
                     final Surface cameraInput = arCompositor.getCameraInputSurface();
                     if (cameraInput == null) throw new IllegalStateException("AR camera input is unavailable.");
