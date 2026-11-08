@@ -192,6 +192,7 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
             if(effect>=10 && effect<20) drawHalloween(mesh,expr);
             else if(effect>=20) drawAccessories(mesh);
             else if(effect==1 || effect==3 || effect==9) drawSparkleAccents(mesh);
+            drawExpressionAccents(mesh,expr,faceScale);
         }
         GLES20.glDisable(GLES20.GL_BLEND);
     }
@@ -384,8 +385,29 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     }
 
     private void drawSparkleAccents(float[] m) {
-        drawCircle(m,70,0x99FFF0C4,0.008f);
-        drawCircle(m,300,0x99FFF0C4,0.008f);
+        float scale=faceScale(m);
+        drawCircle(m,70,0x99FFF0C4,0.008f*scale);
+        drawCircle(m,300,0x99FFF0C4,0.008f*scale);
+    }
+
+    // Small expression-responsive details make the overlays react to the
+    // tracked face rather than remaining static stickers.
+    private void drawExpressionAccents(float[] mesh,float[] expr,float scale) {
+        if(expr==null||expr.length<45)return;
+        float smile=Math.max(expr[43],expr[44]);
+        float blink=Math.max(expr[8],expr[9]);
+        if(smile>0.35f) {
+            float radius=0.010f*scale+0.012f*scale*Math.min(1f,smile);
+            int color=0x66F29AB5;
+            drawCircle(mesh,117,color,radius);
+            drawCircle(mesh,346,color,radius);
+        }
+        if(blink>0.60f) {
+            int color=0xBBFFF0D4;
+            float width=1.2f+2.0f*blink;
+            drawLine(mesh,33,133,color,width);
+            drawLine(mesh,362,263,color,width);
+        }
     }
     private void drawFang(float[] m,int top,int bottom,float length) {
         float[] xy=point(m,top); float[] lo=point(m,bottom);
