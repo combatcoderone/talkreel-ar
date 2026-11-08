@@ -1279,63 +1279,40 @@ public class MainActivity extends Activity {
 
     private Rect activeArray = null;
     private boolean isFrontCamera = true;
+    private final FaceTrackSmoother faceTrackSmoother = new FaceTrackSmoother();
     private CameraCaptureSession.CaptureCallback faceCallback = new CameraCaptureSession.CaptureCallback() {
         @Override
         public void onCaptureCompleted(CameraCaptureSession s, CaptureRequest req, TotalCaptureResult result) {
             android.hardware.camera2.params.Face[] faces = result.get(CaptureResult.STATISTICS_FACES);
-            if (faces != null && faces.length > 0 && frameView != null) {
-                List<Rect> rects = new ArrayList<Rect>();
-                int vw = frameView.getWidth();
-                int vh = frameView.getHeight();
-                if (vw > 0 && vh > 0) {
-                    for (android.hardware.camera2.params.Face f : faces) {
-                        Rect r = f.getBounds();
-                        Rect mapped;
-                        if (activeArray != null && activeArray.width() > 0 && activeArray.height() > 0) {
-                            int left = (r.left - activeArray.left) * vw / activeArray.width();
-                            int top = (r.top - activeArray.top) * vh / activeArray.height();
-                            int right = (r.right - activeArray.left) * vw / activeArray.width();
-                            int bottom = (r.bottom - activeArray.top) * vh / activeArray.height();
-                            if (isFrontCamera) {
-                                int ml = vw - right;
-                                int mr = vw - left;
-                                left = ml;
-                                right = mr;
-                            }
-                            mapped = new Rect(left, top, right, bottom);
-                        } else {
-                            mapped = new Rect(r.left * vw / 1000, r.top * vh / 1000,
-                                    r.right * vw / 1000, r.bottom * vh / 1000);
-                        }
-                        rects.add(mapped);
-                    }
-                    frameView.setFaces(rects);
-                    if (arCompositor != null && faces.length > 0 && activeArray != null
-                            && activeArray.width() > 0 && activeArray.height() > 0) {
-                        // Normalize against the sensor active array, not the
-                        // letterboxed TextureView. This keeps encoded effect
-                        // geometry independent of preview widget dimensions.
-                        Rect sensorFace = faces[0].getBounds();
-                        float left = (sensorFace.left - activeArray.left) / (float) activeArray.width();
-                        float top = (sensorFace.top - activeArray.top) / (float) activeArray.height();
-                        float right = (sensorFace.right - activeArray.left) / (float) activeArray.width();
-                        float bottom = (sensorFace.bottom - activeArray.top) / (float) activeArray.height();
-                        if (isFrontCamera) {
-                            float mirroredLeft = 1f - right;
-                            right = 1f - left;
-                            left = mirroredLeft;
-                        }
-                        left = Math.max(0f, Math.min(1f, left));
-                        top = Math.max(0f, Math.min(1f, top));
-                        right = Math.max(0f, Math.min(1f, right));
-                        bottom = Math.max(0f, Math.min(1f, bottom));
-                        arCompositor.setFaceRect(left, top, right, bottom, isFrontCamera);
-                    }
-                    return;
-                }
+            Rect crop = result.get(CaptureResult.SCALER_CROP_REGION);
+            Long sensorTimestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
+            long timestampNs = sensorTimestamp == null ? System.nanoTime() : sensorTimestamp.longValue();
+            FaceTrackSmoother.Snapshot track = faceTrackSmoother.update(
+                    faces, activeArray, crop, isFrontCamera, timestampNs);
+
+            if (track == null) {
+                if (frameView != null) frameView.clearFaces();
+                if (arCompositor != null) arCompositor.clearFace();
+                return;
             }
-            if (frameView != null) frameView.clearFaces();
-            if (arCompositor != null) arCompositor.clearFace();
+
+            int vw = frameView == null ? 0 : frameView.getWidth();
+            int vh = frameView == null ? 0 : frameView.getHeight();
+            if (frameView != null && vw > 0 && vh > 0) {
+                Rect mapped = new Rect(
+                        Math.round(track.bounds.left * vw),
+                        Math.round(track.bounds.top * vh),
+                        Math.round(track.bounds.right * vw),
+                        Math.round(track.bounds.bottom * vh));
+                List<Rect> rects = new ArrayList<Rect>();
+                rects.add(mapped);
+                frameView.setFaces(rects);
+            }
+            if (arCompositor != null) {
+                arCompositor.setFaceRect(track.bounds.left, track.bounds.top,
+                        track.bounds.right, track.bounds.bottom, isFrontCamera,
+                        track.confidence);
+            }
         }
     };
 
@@ -1378,6 +1355,7 @@ public class MainActivity extends Activity {
                     }
                     CameraCharacteristics chars = manager.getCameraCharacteristics(cameraId);
                     activeArray = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+                    faceTrackSmoother.reset();
                     faceDetectMode = CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF;
                     int[] faceModes = chars.get(CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES);
                     if (faceModes != null) {
