@@ -97,11 +97,14 @@ public final class Media3ExportPipeline {
             final Composition composition;
             if (music != null && music.isFile() && music.length() > 0) {
                 // Keep music under the microphone track instead of letting it compete
-                // at full scale. Apply a conservative 20% gain for mono/stereo sources.
+                // at full scale. Preserve mono/stereo layouts and downmix multichannel
+                // sources to stereo: Media3 supports 1-6 input channels but only
+                // 1-2 output channels for ChannelMixingMatrix.
                 ChannelMixingAudioProcessor musicGain = new ChannelMixingAudioProcessor();
-                for (int channels = 1; channels <= 6; channels++) {
+                for (int inputChannels = 1; inputChannels <= 6; inputChannels++) {
+                    int outputChannels = Math.min(inputChannels, 2);
                     ChannelMixingMatrix matrix = ChannelMixingMatrix.createForConstantPower(
-                            channels, /* outputChannelCount= */ channels);
+                            inputChannels, outputChannels);
                     musicGain.putChannelMixingMatrix(matrix.scaleBy(0.20f));
                 }
                 Effects musicEffects = new Effects(
