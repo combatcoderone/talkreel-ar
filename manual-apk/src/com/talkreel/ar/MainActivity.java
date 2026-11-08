@@ -1380,7 +1380,7 @@ public class MainActivity extends Activity {
                             : displayRotation == Surface.ROTATION_270 ? 270 : 0;
                     int sensorDegrees = sensorOrientation == null ? 0 : sensorOrientation;
                     cameraRotationDegrees = isFrontCamera
-                            ? (sensorDegrees + displayDegrees) % 360
+                            ? (360 - ((sensorDegrees + displayDegrees) % 360)) % 360
                             : (sensorDegrees - displayDegrees + 360) % 360;
                     if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) { cameraOpening = false; return; }
                     manager.openCamera(cameraId, new CameraDevice.StateCallback() {
