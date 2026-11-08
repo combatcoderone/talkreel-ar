@@ -7,6 +7,8 @@ import android.opengl.GLES11Ext;
 import android.opengl.GLES20;
 import android.view.Surface;
 import android.os.Handler;
+import android.util.Log;
+import android.os.SystemClock;
 
 /**
  * Camera-to-encoder GPU bridge. Camera2 writes to the input SurfaceTexture;
@@ -18,33 +20,19 @@ import android.os.Handler;
 final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     private static final String VERTEX =
         "attribute vec4 aPosition; attribute vec2 aTexCoord; " +
-        "uniform mat4 uTexMatrix; varying vec2 vTexCoord; " +
-        "void main(){ gl_Position=aPosition; vTexCoord=(uTexMatrix*vec4(aTexCoord,0.0,1.0)).xy; }";
+        "uniform mat4 uTexMatrix; uniform mat4 uOrientationMatrix; varying vec2 vTexCoord; " +
+        "void main(){ gl_Position=aPosition; vTexCoord=(uTexMatrix*uOrientationMatrix*vec4(aTexCoord,0.0,1.0)).xy; }";
     private static final String FRAGMENT =
         "#extension GL_OES_EGL_image_external : require\n" +
         "precision mediump float; varying vec2 vTexCoord; " +
-        "uniform samplerExternalOES sTexture; uniform int uFilter; uniform vec4 uFaceRect; uniform int uHasFace; uniform int uMirror; " +
-        "void main(){ vec4 c=texture2D(sTexture,vTexCoord); " +
-        "if(uFilter==1){ c.rgb=mix(c.rgb,vec3(dot(c.rgb,vec3(.299,.587,.114))),.08); c.rgb=min(vec3(1.0),c.rgb*1.10+vec3(.025)); } " +
-        "else if(uFilter==2){ c.rgb=mix(c.rgb,vec3(.12,.24,.34),.12); } " +
-        "else if(uFilter==3){ c.rgb=mix(c.rgb,vec3(.95,.56,.68),.08); } " +
-        "else if(uFilter==4){ c.rgb=min(vec3(1.0),c.rgb*1.18); } " +
-        "else if(uFilter==5){ float l=dot(c.rgb,vec3(.299,.587,.114)); c.rgb=mix(c.rgb,vec3(l*.35,l*.9, min(1.0,l*1.5)),.32); } " +
-        "else if(uFilter==6){ vec3 soft=(texture2D(sTexture,vTexCoord+vec2(.002,0.)).rgb+texture2D(sTexture,vTexCoord-vec2(.002,0.)).rgb+texture2D(sTexture,vTexCoord+vec2(0.,.002)).rgb+texture2D(sTexture,vTexCoord-vec2(0.,.002)).rgb)*.25; c.rgb=mix(c.rgb,soft,.24); c.rgb=min(vec3(1.0),c.rgb*1.04); } " +
-        "else if(uFilter==7){ c.rgb=mix(c.rgb,vec3(1.0,.48,.62),.07); } " +
-        "else if(uFilter==8){ c.rgb=mix(c.rgb,vec3(.10,.12,.16),.12); } " +
-        "else if(uFilter==9){ c.rgb=mix(c.rgb,vec3(.72,.45,.22),.08); } " +
-        "else if(uFilter==10){ c.rgb=mix(c.rgb,vec3(.62,.39,.22),.10); } " +
-        "if(uHasFace==1 && uFilter>=2 && uFilter<=10){ vec2 q=vec2(vTexCoord.x,1.0-vTexCoord.y); if(uMirror==1) q.x=1.0-q.x; vec2 sz=uFaceRect.zw-uFaceRect.xy; vec2 ctr=(uFaceRect.xy+uFaceRect.zw)*.5; " +
-        "if(uFilter==2){ vec2 e=ctr+vec2(0.,-sz.y*.10); vec2 l=(q-(e+vec2(-sz.x*.23,0.)))/vec2(sz.x*.20,sz.y*.105); vec2 r=(q-(e+vec2(sz.x*.23,0.)))/vec2(sz.x*.20,sz.y*.105); if(dot(l,l)<1.0||dot(r,r)<1.0)c.rgb=mix(c.rgb,vec3(.08,.55,.92),.68); } " +
-        "if(uFilter==3){ vec2 l=(q-(ctr+vec2(-sz.x*.27,-sz.y*.64)))/vec2(sz.x*.13,sz.y*.34); vec2 r=(q-(ctr+vec2(sz.x*.27,-sz.y*.64)))/vec2(sz.x*.13,sz.y*.34); if(dot(l,l)<1.0||dot(r,r)<1.0)c.rgb=mix(c.rgb,vec3(1.0,.55,.72),.88); } " +
-        "if(uFilter==4 && q.y<ctr.y-sz.y*.56 && q.y>ctr.y-sz.y*1.02 && abs(q.x-ctr.x)<sz.x*.5)c.rgb=mix(c.rgb,vec3(1.0,.72,.08),.95); " +
-        "if(uFilter==5){ float edge=min(min(abs(q.x-uFaceRect.x),abs(q.x-uFaceRect.z)),min(abs(q.y-uFaceRect.y),abs(q.y-uFaceRect.w))); if(edge<.009)c.rgb=mix(c.rgb,vec3(.0,.95,1.0),.98); } " +
-        "if(uFilter==7){ vec2 l=(q-(ctr+vec2(-sz.x*.23,sz.y*.18)))/vec2(sz.x*.12,sz.y*.075); vec2 r=(q-(ctr+vec2(sz.x*.23,sz.y*.18)))/vec2(sz.x*.12,sz.y*.075); vec2 lip=(q-(ctr+vec2(0.,sz.y*.32)))/vec2(sz.x*.20,sz.y*.055); if(dot(l,l)<1.0||dot(r,r)<1.0)c.rgb=mix(c.rgb,vec3(1.0,.28,.42),.52); if(dot(lip,lip)<1.0)c.rgb=mix(c.rgb,vec3(.78,.05,.22),.82); } " +
-        "if(uFilter==8 && abs(q.x-ctr.x)<sz.x*.48 && q.y>ctr.y-sz.y*.48 && q.y<ctr.y+sz.y*.48){ c.rgb=mix(c.rgb,vec3(.16,.18,.22),.40); } " +
-        "if(uFilter==9 && q.y<ctr.y-sz.y*.52 && q.y>ctr.y-sz.y*1.0 && abs(q.x-ctr.x)<sz.x*.5){ c.rgb=mix(c.rgb,vec3(.20,.12,.08),.92); } " +
-        "if(uFilter==10 && q.y<ctr.y-sz.y*.28 && q.y>ctr.y-sz.y*.95 && abs(q.x-ctr.x)<sz.x*.62){ c.rgb=mix(c.rgb,vec3(.45,.24,.12),.82); } " +
-        "} gl_FragColor=c; }";
+        "uniform samplerExternalOES sTexture; uniform int uFilter; " +
+        "void main(){ vec3 c=texture2D(sTexture,vTexCoord).rgb; " +
+        "if(uFilter==1){ c.r=min(1.0,c.r*1.035+0.008); c.g=min(1.0,c.g*1.012); c.b*=0.975; } " +
+        "else if(uFilter==2){ c.r*=0.975; c.g*=1.005; c.b=min(1.0,c.b*1.045+0.006); } " +
+        "else if(uFilter==3){ c=(c-vec3(0.5))*1.10+vec3(0.5); c.r=min(1.0,c.r*1.025); c.b*=0.985; } " +
+        "else if(uFilter==4){ c=mix(c,vec3(dot(c,vec3(0.299,0.587,0.114))),0.10); c=min(vec3(1.0),c*1.025+vec3(0.008)); } " +
+        "else if(uFilter==5){ float y=dot(c,vec3(0.2126,0.7152,0.0722)); c=vec3(y); } " +
+        "gl_FragColor=vec4(clamp(c,0.0,1.0),1.0); }";
 
     private final Handler handler;
     private EGLDisplayHolder egl;
@@ -57,12 +45,22 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     private int program, guideProgram, textureId;
     private int guidePositionLoc, guideColorLoc;
     private volatile int frameShape;
+    private long lastEglLogAt;
+    private String lastEglLogKey = "";
+    private final java.nio.FloatBuffer guideBuffer = java.nio.ByteBuffer.allocateDirect(128*4)
+            .order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
+    private int overlayProgram, overlayPositionLoc, overlayColorLoc;
+    private java.nio.FloatBuffer overlayBuffer;
+    private volatile FaceTrackingEngine.FaceFrame faceFrame;
+    private volatile boolean mirrorFace;
+    private volatile int effect = 0;
     private volatile int filter;
-    private int positionLoc, texCoordLoc, matrixLoc, filterLoc, faceRectLoc, hasFaceLoc, mirrorLoc, samplerLoc;
+    private int positionLoc, texCoordLoc, matrixLoc, orientationLoc, filterLoc, samplerLoc;
     private java.nio.FloatBuffer vertexBuffer, texBuffer;
     private volatile float faceLeft, faceTop, faceRight, faceBottom;
-    private volatile boolean hasFace, mirrorFace;
+    private volatile boolean hasFace;
     private final float[] transform = new float[16];
+    private final float[] orientationMatrix = new float[16];
     private boolean released;
 
     ArCompositor(Handler handler) { this.handler=handler; }
@@ -88,13 +86,17 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
                 "precision mediump float; uniform vec4 uColor; void main(){ gl_FragColor=uColor; }");
         guidePositionLoc=GLES20.glGetAttribLocation(guideProgram,"aPosition");
         guideColorLoc=GLES20.glGetUniformLocation(guideProgram,"uColor");
+        overlayProgram=createProgram("attribute vec2 aPosition; void main(){gl_Position=vec4(aPosition,0.0,1.0);}",
+                "precision mediump float; uniform vec4 uColor; void main(){gl_FragColor=uColor;}");
+        overlayPositionLoc=GLES20.glGetAttribLocation(overlayProgram,"aPosition");
+        overlayColorLoc=GLES20.glGetUniformLocation(overlayProgram,"uColor");
+        overlayBuffer=java.nio.ByteBuffer.allocateDirect(2048*4).order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
         positionLoc=GLES20.glGetAttribLocation(program,"aPosition");
         texCoordLoc=GLES20.glGetAttribLocation(program,"aTexCoord");
         matrixLoc=GLES20.glGetUniformLocation(program,"uTexMatrix");
+        orientationLoc=GLES20.glGetUniformLocation(program,"uOrientationMatrix");
         filterLoc=GLES20.glGetUniformLocation(program,"uFilter");
-        faceRectLoc=GLES20.glGetUniformLocation(program,"uFaceRect");
-        hasFaceLoc=GLES20.glGetUniformLocation(program,"uHasFace");
-        mirrorLoc=GLES20.glGetUniformLocation(program,"uMirror");
+        android.opengl.Matrix.setIdentityM(orientationMatrix,0);
         samplerLoc=GLES20.glGetUniformLocation(program,"sTexture");
         float[] vertices={-1,-1, 1,-1, -1,1, 1,1};
         float[] tex={0,1, 1,1, 0,0, 1,0};
@@ -112,8 +114,22 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         if(surface!=null) encoderEgl=new EGL14Surface(egl,surface);
     }
 
-    void setFilter(int value) { filter=value; }
+    void setFilter(int value) { filter=Math.max(0,Math.min(5,value)); }
     void setFrameShape(int value) { frameShape=Math.max(0,Math.min(3,value)); }
+    void setEffect(int value) { effect=Math.max(0,Math.min(29,value)); }
+    void setFaceFrame(FaceTrackingEngine.FaceFrame frame, boolean mirrored) { faceFrame=frame; mirrorFace=mirrored; }
+    void clearFaceFrame() { faceFrame=null; }
+    void setCameraOrientation(int degrees) { setCameraOrientation(degrees, false); }
+    void setCameraOrientation(int degrees, boolean mirror) {
+        checkThread();
+        int rotation=((degrees%360)+360)%360;
+        android.opengl.Matrix.setIdentityM(orientationMatrix,0);
+        android.opengl.Matrix.translateM(orientationMatrix,0,0.5f,0.5f,0f);
+        if (mirror) android.opengl.Matrix.scaleM(orientationMatrix,0,-1f,1f,1f);
+        mirrorFace=mirror;
+        android.opengl.Matrix.rotateM(orientationMatrix,0,rotation,0f,0f,1f);
+        android.opengl.Matrix.translateM(orientationMatrix,0,-0.5f,-0.5f,0f);
+    }
     void setFaceRect(float left,float top,float right,float bottom,boolean mirrored) {
         faceLeft=left; faceTop=top; faceRight=right; faceBottom=bottom;
         mirrorFace=mirrored; hasFace=right>left && bottom>top;
@@ -130,11 +146,17 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
             long timestamp=cameraTexture.getTimestamp();
             draw(previewEgl,timestamp);
             if(encoderEgl!=null) draw(encoderEgl,timestamp);
-        } catch (RuntimeException ignoredError) { }
+        } catch (RuntimeException error) {
+            logEglFailure("frame callback", error.getMessage());
+        }
     }
 
     private void draw(EGL14Surface target,long timestamp) {
-        if(target==null || !target.makeCurrent()) return;
+        if(target==null) return;
+        if(!target.makeCurrent()) {
+            logEglFailure("eglMakeCurrent", "error=0x" + Integer.toHexString(EGL14.eglGetError()));
+            return;
+        }
         GLES20.glViewport(0,0,target.width,target.height);
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
         GLES20.glUseProgram(program);
@@ -142,10 +164,8 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES,textureId);
         GLES20.glUniform1i(samplerLoc,0);
         GLES20.glUniform1i(filterLoc,filter);
-        GLES20.glUniform1i(hasFaceLoc,hasFace?1:0);
-        GLES20.glUniform1i(mirrorLoc,mirrorFace?1:0);
-        GLES20.glUniform4f(faceRectLoc,faceLeft,faceTop,faceRight,faceBottom);
         GLES20.glUniformMatrix4fv(matrixLoc,1,false,transform,0);
+        GLES20.glUniformMatrix4fv(orientationLoc,1,false,orientationMatrix,0);
         vertexBuffer.position(0);
         texBuffer.position(0);
         GLES20.glEnableVertexAttribArray(positionLoc);
@@ -155,9 +175,347 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4);
         GLES20.glDisableVertexAttribArray(positionLoc);
         GLES20.glDisableVertexAttribArray(texCoordLoc);
+        drawFaceEffects();
         if(target==encoderEgl) drawEncodedGuides();
-        if(target==encoderEgl && timestamp>0) EGLExt.eglPresentationTimeANDROID(egl.display,target.surface,timestamp);
-        EGL14.eglSwapBuffers(egl.display,target.surface);
+        if(target==encoderEgl && timestamp>0
+                && !EGLExt.eglPresentationTimeANDROID(egl.display,target.surface,timestamp)) {
+            logEglFailure("eglPresentationTimeANDROID", "error=0x" + Integer.toHexString(EGL14.eglGetError()));
+        }
+        if(!EGL14.eglSwapBuffers(egl.display,target.surface)) {
+            logEglFailure("eglSwapBuffers", "error=0x" + Integer.toHexString(EGL14.eglGetError()));
+        }
+    }
+
+
+    // The same GPU pass runs for both preview and encoder EGL surfaces, so the
+    // tracked makeup/lens geometry is present in the actual MP4, not just UI.
+    private static final int[] FACE_OVAL={10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109};
+    private static final int[] LEFT_EYE={33,160,158,157,173,133,155,154,153,145,144,163,7};
+    private static final int[] RIGHT_EYE={362,385,387,386,398,263,373,374,380,381,382,466};
+    private static final int[] LIPS={61,185,40,39,37,0,267,269,270,409,291,375,321,405,314,17,84,181,91,146};
+    private static final int[] FOREHEAD_LEFT={70,63,105,66,107};
+    private static final int[] FOREHEAD_RIGHT={300,293,334,296,336};
+
+    private void drawFaceEffects() {
+        FaceTrackingEngine.FaceFrame frame=faceFrame;
+        if(frame==null || SystemClock.uptimeMillis()-frame.timestampMs>200 || frame.faceCount()==0) return;
+        GLES20.glUseProgram(overlayProgram);
+        GLES20.glEnable(GLES20.GL_BLEND);
+        GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA);
+        for(int i=0;i<frame.faceCount();i++) {
+            float[] mesh=frame.landmarks[i];
+            float[] expr=frame.blendshapes[i];
+            if(mesh==null||mesh.length<FaceTrackingEngine.LANDMARK_COUNT*3) continue;
+            drawPolygon(mesh,FACE_OVAL,skinTint(effect),0.0f);
+            int eye=eyeColor(effect), lip=lipColor(effect), cheek=cheekColor(effect);
+            drawPolygon(mesh,LEFT_EYE,eye,0.0f);
+            drawPolygon(mesh,RIGHT_EYE,eye,0.0f);
+            drawPolygon(mesh,LIPS,lip,0.0f);
+            float faceScale=faceScale(mesh);
+            drawCircle(mesh,117,cheek,0.027f*faceScale);
+            drawCircle(mesh,346,cheek,0.027f*faceScale);
+            if(effect>=10 && effect<20) drawHalloween(mesh,expr);
+            else if(effect>=20) drawAccessories(mesh);
+            else if(effect==1 || effect==3 || effect==9) drawSparkleAccents(mesh);
+            drawExpressionAccents(mesh,expr,faceScale);
+        }
+        GLES20.glDisable(GLES20.GL_BLEND);
+    }
+
+    private int skinTint(int e) {
+        switch(e) {
+            case 10:return 0x55D8D2C9; case 11:return 0x228E1828;
+            case 12:return 0x66F08B28; case 13:return 0x665D8A42;
+            case 14:return 0x665D3D87; case 15:return 0x66DDEBF2;
+            case 16:return 0x665B162B; case 17:return 0x44321A45;
+            case 18:return 0x77EADDD4; case 19:return 0x4400DDF5;
+            case 9:return 0x22E8C6C8; case 4:return 0x228C583A;
+            default:return 0x18C58A91;
+        }
+    }
+    private int eyeColor(int e) {
+        switch(e) {
+            case 2:return 0xAA33243F; case 3:return 0x996F3E82;
+            case 4:return 0x996E4528; case 5:return 0xAA52182C;
+            case 8:return 0xAA8A4525; case 10:return 0xDD151515;
+            case 11:return 0xCC25101A; case 13:return 0xDD253A20;
+            case 14:return 0xCC311C55; case 15:return 0xCC71828C;
+            case 16:return 0xDD130D20; case 17:return 0xCC32103B;
+            case 18:return 0xBB45323A; case 19:return 0xDD00BBD2;
+            default:return 0x775A344A;
+        }
+    }
+    private int lipColor(int e) {
+        switch(e) {
+            case 5:return 0xE8B20C2D; case 7:return 0xD889174D;
+            case 10:return 0xCC202020; case 11:return 0xEE8B1025;
+            case 12:return 0xDDC64B12; case 13:return 0xCC4D392C;
+            case 14:return 0xCC3A1D61; case 15:return 0xBB9BAAB2;
+            case 16:return 0xEE671019; case 17:return 0xCC2A0C38;
+            case 18:return 0xCC9A2638; case 19:return 0xEE00CFEA;
+            case 20:return 0xBB4AA9E8; case 21:return 0xBBE7B93E;
+            case 22:return 0xBBEAD9D1; case 23:return 0xBB7D4C9B;
+            case 24:return 0xBBE9C8D8; case 25:return 0xBBF4DDAA;
+            case 26:return 0xBB3F91D4; case 27:return 0xDD00CFEA;
+            case 28:return 0xBBE4B2D5; case 29:return 0xBB3FC3DE;
+            default:return 0xBB9A405D;
+        }
+    }
+    private int cheekColor(int e) {
+        if(e>=10) return e==12?0xAAE66B12:(e==13?0x995B6C40:0x887D2636);
+        switch(e){case 1:return 0x88D36A91;case 3:return 0x88D87CA5;case 4:return 0x888B4D2E;default:return 0x668C5360;}
+    }
+
+    private void drawHalloween(float[] mesh,float[] expr) {
+        switch(effect) {
+            case 10: // Skull: dark sockets, nose cavity and expression-scaled teeth.
+                drawPolygon(mesh,LEFT_EYE,0xEE111111,0);
+                drawPolygon(mesh,RIGHT_EYE,0xEE111111,0);
+                drawTriangle(mesh,1,4,5,0xCC111111);
+                drawTeeth(mesh,0xFFECE8DD,0.018f+(expr.length>0?expr[24]*0.025f:0));
+                drawCrack(mesh,10,0xFF262626); drawCrack(mesh,234,0xFF262626);
+                break;
+            case 11: // Vampire
+                drawFang(mesh,78,88,0.025f+(expr.length>0?expr[24]*0.035f:0));
+                drawFang(mesh,308,318,0.025f+(expr.length>24?expr[24]*0.035f:0));
+                drawCircle(mesh,1,0x99C20E2D,0.012f);
+                break;
+            case 12: // Pumpkin
+                drawLine(mesh,10,152,0x99A63E08,2.5f);
+                drawLine(mesh,109,338,0x88F4A42C,1.8f);
+                drawTriangle(mesh,9,107,336,0xAA6C330A);
+                break;
+            case 13: // Zombie
+                drawPolygon(mesh,LEFT_EYE,0xCC182019,0);
+                drawPolygon(mesh,RIGHT_EYE,0xCC182019,0);
+                drawCrack(mesh,10,0xFF33251E); drawCrack(mesh,234,0xFF33251E);
+                drawCircle(mesh,205,0x998B1E1E,0.025f);
+                break;
+            case 14: // Witch
+                drawTriangle(mesh,10,54,67,0xCC26104A);
+                drawTriangle(mesh,10,336,296,0xCC26104A);
+                drawCircle(mesh,1,0xAA21172B,0.012f);
+                break;
+            case 15: // Ghost
+                drawPolygon(mesh,LEFT_EYE,0xBB34404A,0);
+                drawPolygon(mesh,RIGHT_EYE,0xBB34404A,0);
+                drawCircle(mesh,13,0xAA28313A,0.018f);
+                break;
+            case 16: // Demon
+                drawTriangle(mesh,10,54,67,0xFF8D1228);
+                drawTriangle(mesh,10,336,296,0xFF8D1228);
+                drawPolygon(mesh,LEFT_EYE,0xEE160B20,0);
+                drawPolygon(mesh,RIGHT_EYE,0xEE160B20,0);
+                break;
+            case 17: // Spider queen
+                drawSpiderWeb(mesh,33); drawSpiderWeb(mesh,263);
+                drawCircle(mesh,1,0xFF15101D,0.018f);
+                break;
+            case 18: // Cracked porcelain doll
+                drawCrack(mesh,10,0xFF6B2638); drawCrack(mesh,234,0xFF6B2638);
+                drawCrack(mesh,454,0xFF6B2638);
+                drawCircle(mesh,1,0x66FFFFFF,0.025f);
+                break;
+            case 19: // Neon phantom
+                drawPolygon(mesh,FACE_OVAL,0x5500DFF5,0);
+                drawPolygon(mesh,LEFT_EYE,0xDD00EFFF,0);
+                drawPolygon(mesh,RIGHT_EYE,0xDD00EFFF,0);
+                drawLine(mesh,33,263,0xCC00EFFF,2.5f);
+                break;
+        }
+    }
+
+    private void drawAccessories(float[] m) {
+        float scale=faceScale(m);
+        switch(effect) {
+            case 20: // Crystal glasses follow both orbital rims.
+                drawOutline(m,LEFT_EYE,0xFF8EDBFF,3.0f);
+                drawOutline(m,RIGHT_EYE,0xFF8EDBFF,3.0f);
+                drawLine(m,133,362,0xFFB8F0FF,2.6f);
+                drawLine(m,33,127,0xFF8EDBFF,2.2f);
+                drawLine(m,263,356,0xFF8EDBFF,2.2f);
+                break;
+            case 21: // Gold crown anchored to the upper face mesh.
+                drawPolygon(m,new int[]{10,67,103,54,21,162,127,234},0xDDE9B93E,0);
+                drawTriangle(m,10,54,67,0xFFFFD66A);
+                drawTriangle(m,10,336,296,0xFFFFD66A);
+                drawCircle(m,9,0xFFFFF1B8,0.012f);
+                break;
+            case 22: // Pearl ear and jaw jewelry.
+                drawCircle(m,234,0xFFEFE5DD,0.018f);
+                drawCircle(m,454,0xFFEFE5DD,0.018f);
+                drawCircle(m,152,0xFFEFE5DD,0.014f);
+                drawCircle(m,172,0xFFEFE5DD,0.010f);
+                drawCircle(m,397,0xFFEFE5DD,0.010f);
+                break;
+            case 23: // Cat ears.
+                drawPolygonCoords(around(point(m,10),scale,-0.11f,-0.08f,-0.035f,-0.24f,0.01f,-0.08f),0xDD493052);
+                drawPolygonCoords(around(point(m,10),scale,0.035f,-0.08f,0.11f,-0.24f,0.14f,-0.07f),0xDD493052);
+                break;
+            case 24: // Bunny ears.
+                drawPolygonCoords(around(point(m,10),scale,-0.09f,-0.05f,-0.13f,-0.28f,-0.045f,-0.24f),0xDDE9C8D8);
+                drawPolygonCoords(around(point(m,10),scale,0.04f,-0.05f,0.13f,-0.25f,0.10f,-0.04f),0xDDE9C8D8);
+                break;
+            case 25: // Halo.
+                float[] top=point(m,10);
+                drawEllipseOutline(top[0],top[1]-0.12f*scale,0xFFFFE7A8,0.105f*scale,0.018f*scale,2.5f);
+                break;
+            case 26: // Butterfly wings at the temples.
+                drawTriangle(m,234,127,93,0xBB7BC8F4);
+                drawTriangle(m,234,132,58,0xBBE5A2CF);
+                drawTriangle(m,454,356,323,0xBB7BC8F4);
+                drawTriangle(m,454,361,288,0xBBE5A2CF);
+                break;
+            case 27: // Cyber visor.
+                drawPolygon(m,new int[]{33,160,158,133,362,385,387,263},0xBB00D9F5,0);
+                drawLine(m,33,263,0xFF8DF7FF,3.0f);
+                break;
+            case 28: // Star-like freckles.
+                for(int i=0;i<4;i++){drawCircle(m,117+i,0xFFFFD4F1,0.009f);drawCircle(m,346-i,0xFFFFD4F1,0.009f);}
+                drawCircle(m,50,0xFFFFD4F1,0.007f);
+                drawCircle(m,280,0xFFFFD4F1,0.007f);
+                break;
+            case 29: // Graphic rainbow face paint.
+                drawLine(m,10,50,0xFFFF4C68,3.0f);
+                drawLine(m,10,101,0xFFFFB83D,3.0f);
+                drawLine(m,10,205,0xFF56C98A,3.0f);
+                drawLine(m,10,280,0xFF4B9BEA,3.0f);
+                drawLine(m,10,330,0xFFB56BE8,3.0f);
+                break;
+        }
+    }
+    // Normalize accessory dimensions to inter-temple distance so lenses retain
+    // plausible proportions as a face moves toward or away from the camera.
+    private float faceScale(float[] mesh) {
+        float[] left=point(mesh,234),right=point(mesh,454);
+        float width=(float)Math.hypot(right[0]-left[0],right[1]-left[1]);
+        return Math.max(0.55f,Math.min(1.8f,width/0.34f));
+    }
+    private float[] around(float[] center,float scale,float... offsets) {
+        float[] p=new float[offsets.length];
+        for(int i=0;i<offsets.length;i+=2){p[i]=center[0]+offsets[i]*scale;p[i+1]=center[1]+offsets[i+1]*scale;}
+        return p;
+    }
+    private void drawEllipseOutline(float x,float y,int color,float rx,float ry,float width) {
+        float[] p=new float[48];
+        for(int i=0;i<24;i++){double a=i*Math.PI/12;p[i*2]=x+(float)Math.cos(a)*rx;p[i*2+1]=y+(float)Math.sin(a)*ry;}
+        drawPolyline(p,color,width);
+        drawLineCoords(p[0],p[1],p[p.length-2],p[p.length-1],color,width);
+    }
+    private void drawOutline(float[] m,int[] indices,int color,float width) {
+        float[] p=new float[indices.length*2];
+        for(int i=0;i<indices.length;i++){float[] q=point(m,indices[i]);p[i*2]=q[0];p[i*2+1]=q[1];}
+        drawPolyline(p,color,width);
+        drawLineCoords(p[0],p[1],p[p.length-2],p[p.length-1],color,width);
+    }
+
+    private void drawSparkleAccents(float[] m) {
+        float scale=faceScale(m);
+        drawCircle(m,70,0x99FFF0C4,0.008f*scale);
+        drawCircle(m,300,0x99FFF0C4,0.008f*scale);
+    }
+
+    // Small expression-responsive details make the overlays react to the
+    // tracked face rather than remaining static stickers.
+    private void drawExpressionAccents(float[] mesh,float[] expr,float scale) {
+        if(expr==null||expr.length<45)return;
+        float smile=Math.max(expr[43],expr[44]);
+        float blink=Math.max(expr[8],expr[9]);
+        if(smile>0.35f) {
+            float radius=0.010f*scale+0.012f*scale*Math.min(1f,smile);
+            int color=0x66F29AB5;
+            drawCircle(mesh,117,color,radius);
+            drawCircle(mesh,346,color,radius);
+        }
+        if(blink>0.60f) {
+            int color=0xBBFFF0D4;
+            float width=1.2f+2.0f*blink;
+            drawLine(mesh,33,133,color,width);
+            drawLine(mesh,362,263,color,width);
+        }
+    }
+    private void drawFang(float[] m,int top,int bottom,float length) {
+        float[] xy=point(m,top); float[] lo=point(m,bottom);
+        float[] p={xy[0]-0.008f,xy[1],xy[0]+0.008f,xy[1],xy[0],Math.min(0.98f,lo[1]+length)};
+        drawPolygonCoords(p,0xFFF4F1E9);
+    }
+    private void drawTeeth(float[] m,int color,float height) {
+        drawFang(m,78,88,height); drawFang(m,308,318,height);
+        drawLine(m,78,308,color,1.2f);
+    }
+    private void drawCrack(float[] m,int start,int color) {
+        float[] a=point(m,start);
+        float[] p={a[0],a[1],a[0]+0.025f,a[1]+0.035f,a[0]+0.008f,a[1]+0.065f,
+                   a[0]+0.034f,a[1]+0.085f};
+        drawPolyline(p,color,2.0f);
+    }
+    private void drawSpiderWeb(float[] m,int eye) {
+        float[] c=point(m,eye);
+        for(int i=0;i<6;i++){
+            double a=i*Math.PI/3;
+            float x=c[0]+(float)Math.cos(a)*0.09f;
+            float y=c[1]+(float)Math.sin(a)*0.07f;
+            drawLineCoords(c[0],c[1],x,y,0xCCF2D6F5,1.1f);
+        }
+        drawCircle(m,eye,0xFF17111F,0.012f);
+    }
+
+    private void drawTriangle(float[] m,int a,int b,int c,int color) {
+        float[] p1=point(m,a),p2=point(m,b),p3=point(m,c);
+        drawPolygonCoords(new float[]{p1[0],p1[1],p2[0],p2[1],p3[0],p3[1]},color);
+    }
+    private void drawCircle(float[] m,int index,int color,float radius) {
+        float[] c=point(m,index); float[] p=new float[24];
+        for(int i=0;i<12;i++){double a=i*Math.PI/6;p[i*2]=c[0]+(float)Math.cos(a)*radius;p[i*2+1]=c[1]+(float)Math.sin(a)*radius;}
+        drawPolygonCoords(p,color);
+    }
+    private void drawLine(float[] m,int a,int b,int color,float width) {
+        float[] p=point(m,a),q=point(m,b);
+        drawLineCoords(p[0],p[1],q[0],q[1],color,width);
+    }
+    private void drawLineCoords(float x1,float y1,float x2,float y2,int color,float width) {
+        float[] xy={x1,y1,x2,y2}; setOverlayColor(color);
+        overlayBuffer.clear(); putNdc(xy[0],xy[1]); putNdc(xy[2],xy[3]); overlayBuffer.flip();
+        GLES20.glLineWidth(width);
+        GLES20.glEnableVertexAttribArray(overlayPositionLoc);
+        GLES20.glVertexAttribPointer(overlayPositionLoc,2,GLES20.GL_FLOAT,false,0,overlayBuffer);
+        GLES20.glDrawArrays(GLES20.GL_LINES,0,2);
+    }
+    private void drawPolyline(float[] xy,int color,float width) {
+        setOverlayColor(color); overlayBuffer.clear();
+        for(int i=0;i<xy.length;i+=2)putNdc(xy[i],xy[i+1]);
+        overlayBuffer.flip(); GLES20.glLineWidth(width);
+        GLES20.glEnableVertexAttribArray(overlayPositionLoc);
+        GLES20.glVertexAttribPointer(overlayPositionLoc,2,GLES20.GL_FLOAT,false,0,overlayBuffer);
+        GLES20.glDrawArrays(GLES20.GL_LINE_STRIP,0,xy.length/2);
+    }
+    private void drawPolygon(float[] mesh,int[] indices,int color,float unused) {
+        float[] xy=new float[indices.length*2];
+        for(int i=0;i<indices.length;i++){float[] p=point(mesh,indices[i]);xy[i*2]=p[0];xy[i*2+1]=p[1];}
+        drawPolygonCoords(xy,color);
+    }
+    private void drawPolygonCoords(float[] xy,int color) {
+        if(xy.length<6)return;
+        float cx=0,cy=0;int count=xy.length/2;
+        for(int i=0;i<count;i++){cx+=xy[i*2];cy+=xy[i*2+1];}
+        cx/=count;cy/=count;
+        setOverlayColor(color);overlayBuffer.clear();putNdc(cx,cy);
+        for(int i=0;i<count;i++)putNdc(xy[i*2],xy[i*2+1]);
+        putNdc(xy[0],xy[1]);overlayBuffer.flip();
+        GLES20.glEnableVertexAttribArray(overlayPositionLoc);
+        GLES20.glVertexAttribPointer(overlayPositionLoc,2,GLES20.GL_FLOAT,false,0,overlayBuffer);
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_FAN,0,count+2);
+    }
+    private float[] point(float[] mesh,int index) {
+        float x=mesh[index*3],y=mesh[index*3+1];
+        if(mirrorFace)x=1f-x;
+        return new float[]{x,y};
+    }
+    private void putNdc(float x,float y){overlayBuffer.put(x*2f-1f);overlayBuffer.put(1f-y*2f);}
+    private void setOverlayColor(int color) {
+        GLES20.glUseProgram(overlayProgram);
+        GLES20.glUniform4f(overlayColorLoc,((color>>16)&255)/255f,((color>>8)&255)/255f,
+                (color&255)/255f,((color>>>24)&255)/255f);
     }
 
     void stop() {
@@ -166,6 +524,8 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         if(egl!=null && previewEgl!=null) previewEgl.makeCurrent();
         if(program!=0){ GLES20.glDeleteProgram(program); program=0; }
         if(guideProgram!=0){ GLES20.glDeleteProgram(guideProgram); guideProgram=0; }
+        if(overlayProgram!=0){ GLES20.glDeleteProgram(overlayProgram); overlayProgram=0; }
+        faceFrame=null;
         if(textureId!=0){ GLES20.glDeleteTextures(1,new int[]{textureId},0); textureId=0; }
         if(cameraTexture!=null){ cameraTexture.setOnFrameAvailableListener(null); cameraTexture.release(); cameraTexture=null; }
         if(cameraInput!=null){ cameraInput.release(); cameraInput=null; }
@@ -176,65 +536,39 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         if(egl!=null){ egl.close(); egl=null; }
     }
 
-    /**
-     * ProFrameView is a display-only Android View. Recreate its framing guides
-     * in GL for the encoder surface so the saved MP4 contains the same guide
-     * layer the user sees in the preview.
-     */
+    /** Recreate display-only framing guides in GL for the encoded MP4. */
+    private static final float[] GUIDE_GRID={-1f,-1f/3f,1f,-1f/3f,-1f,1f/3f,1f,1f/3f,-1f/3f,-1f,-1f/3f,1f,1f/3f,-1f,1f/3f,1f};
+    private static final float[] GUIDE_RECT={-0.66f,-0.52f,0.66f,-0.52f,0.66f,-0.52f,0.66f,0.80f,0.66f,0.80f,-0.66f,0.80f,-0.66f,0.80f,-0.66f,-0.52f};
+    private static final float[] GUIDE_OVAL=buildOvalGuide();
+    private static final float[] GUIDE_HEART=buildHeartGuide();
+    private static float[] buildOvalGuide(){float[] v=new float[128];for(int i=0;i<64;i++){double a=(Math.PI*2.0*i)/64.0;v[i*2]=(float)(Math.cos(a)*0.66);v[i*2+1]=(float)(0.14+Math.sin(a)*0.66);}return v;}
+    private static float[] buildHeartGuide(){float[] v=new float[128];for(int i=0;i<64;i++){double t=(Math.PI*2.0*i)/64.0;double x=16*Math.pow(Math.sin(t),3)/16.0;double y=(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t))/16.0;v[i*2]=(float)(x*0.66);v[i*2+1]=(float)(0.14+y*0.66);}return v;}
     private void drawEncodedGuides() {
+        if(guideProgram==0)return;
         GLES20.glUseProgram(guideProgram);
         GLES20.glEnable(GLES20.GL_BLEND);
         GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA);
-        if(AppState.showFrame) {
-            drawGuideLine(-1f,-1f/3f,1f,-1f/3f,0.25f);
-            drawGuideLine(-1f,1f/3f,1f,1f/3f,0.25f);
-            drawGuideLine(-1f/3f,-1f,-1f/3f,1f,0.25f);
-            drawGuideLine(1f/3f,-1f,1f/3f,1f,0.25f);
-        }
-        if(frameShape==1 || frameShape==3) {
-            float[] oval=new float[128];
-            for(int i=0;i<64;i++) {
-                double a=(Math.PI*2.0*i)/64.0;
-                oval[i*2]=(float)(Math.cos(a)*0.66);
-                oval[i*2+1]=(float)(0.14+Math.sin(a)*0.66);
-            }
-            drawGuideVertices(oval,64,0.57f);
-        } else if(frameShape==2) {
-            float[] heart=new float[128];
-            for(int i=0;i<64;i++) {
-                double t=(Math.PI*2.0*i)/64.0;
-                double x=16*Math.pow(Math.sin(t),3)/16.0;
-                double y=(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t))/16.0;
-                heart[i*2]=(float)(x*0.66);
-                heart[i*2+1]=(float)(0.14+y*0.66);
-            }
-            drawGuideVertices(heart,64,0.57f);
-        } else {
-            float[] rect={-0.66f,-0.52f,0.66f,-0.52f,
-                    0.66f,-0.52f,0.66f,0.80f,
-                    0.66f,0.80f,-0.66f,0.80f,
-                    -0.66f,0.80f,-0.66f,-0.52f};
-            drawGuideVertices(rect,8,0.57f);
-        }
+        if(AppState.showFrame)drawGuideVertices(GUIDE_GRID,8,GLES20.GL_LINES,0.25f);
+        if(frameShape==1||frameShape==3)drawGuideVertices(GUIDE_OVAL,64,GLES20.GL_LINE_LOOP,0.57f);
+        else if(frameShape==2)drawGuideVertices(GUIDE_HEART,64,GLES20.GL_LINE_LOOP,0.57f);
+        else drawGuideVertices(GUIDE_RECT,8,GLES20.GL_LINE_LOOP,0.57f);
         GLES20.glDisable(GLES20.GL_BLEND);
     }
-
-    private void drawGuideLine(float x1,float y1,float x2,float y2,float alpha) {
-        drawGuideVertices(new float[]{x1,y1,x2,y2},2,alpha);
-    }
-
-    private void drawGuideVertices(float[] values,int count,float alpha) {
-        java.nio.FloatBuffer buffer=java.nio.ByteBuffer.allocateDirect(values.length*4)
-                .order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
-        buffer.put(values).position(0);
+    private void drawGuideVertices(float[] values,int count,int mode,float alpha) {
+        guideBuffer.clear();guideBuffer.put(values,0,values.length);guideBuffer.flip();
         GLES20.glUniform4f(guideColorLoc,1f,1f,1f,alpha);
         GLES20.glEnableVertexAttribArray(guidePositionLoc);
-        GLES20.glVertexAttribPointer(guidePositionLoc,2,GLES20.GL_FLOAT,false,0,buffer);
-        GLES20.glLineWidth(2f);
-        GLES20.glDrawArrays(count==2?GLES20.GL_LINES:GLES20.GL_LINE_LOOP,0,count);
+        GLES20.glVertexAttribPointer(guidePositionLoc,2,GLES20.GL_FLOAT,false,0,guideBuffer);
+        GLES20.glLineWidth(2f);GLES20.glDrawArrays(mode,0,count);
         GLES20.glDisableVertexAttribArray(guidePositionLoc);
     }
-
+    private void logEglFailure(String operation,String detail) {
+        long now=android.os.SystemClock.uptimeMillis();
+        String key=operation+":"+String.valueOf(detail);
+        if(key.equals(lastEglLogKey)&&now-lastEglLogAt<5000L)return;
+        lastEglLogKey=key; lastEglLogAt=now;
+        Log.e("TalkReelEGL",operation+" failed: "+detail);
+    }
     private void checkThread() {
         if(handler.getLooper().getThread()!=Thread.currentThread()) throw new IllegalStateException("ArCompositor must be used on camera thread");
     }
