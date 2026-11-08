@@ -1312,6 +1312,7 @@ public class MainActivity extends Activity {
                 arCompositor.setFaceRect(track.bounds.left, track.bounds.top,
                         track.bounds.right, track.bounds.bottom, isFrontCamera,
                         track.confidence);
+                arCompositor.setFaceLandmarks(track.leftEye, track.rightEye, track.mouth);
             }
         }
     };
