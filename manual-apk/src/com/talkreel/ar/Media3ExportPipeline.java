@@ -5,6 +5,8 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.media.MediaCodecInfo;
 import android.media.MediaCodecList;
+import android.media.MediaExtractor;
+import android.media.MediaFormat;
 import android.net.Uri;
 import android.text.SpannableString;
 import android.text.Spanned;
@@ -124,6 +126,14 @@ public final class Media3ExportPipeline {
                         @Override
                         public void onCompleted(Composition ignored, ExportResult result) {
                             synchronized (Media3ExportPipeline.class) { activeTransformer = null; }
+                            String verificationFailure = verifyMuxedOutput(source, temporary);
+                            if (verificationFailure != null) {
+                                temporary.delete();
+                                Toast.makeText(activity, "Export verification failed: " + verificationFailure
+                                        + ". Original recording is unchanged.", Toast.LENGTH_LONG).show();
+                                if (callbackHandler != null && onFailed != null) callbackHandler.post(onFailed);
+                                return;
+                            }
                             if (!temporary.renameTo(output)) {
                                 temporary.delete();
                                 Toast.makeText(activity, "Export finished, but final file could not be moved. Original is safe.", Toast.LENGTH_LONG).show();
@@ -155,6 +165,30 @@ public final class Media3ExportPipeline {
         }
     }
 
+    /** Inspect the muxed file before publishing it as the final recording. */
+    private static String verifyMuxedOutput(File source, File output) {
+        if(output==null||!output.isFile()||output.length()<=0)return "the output file is missing or empty";
+        MediaExtractor out=new MediaExtractor(), in=new MediaExtractor();
+        try {
+            out.setDataSource(output.getAbsolutePath());
+            boolean video=false,audio=false; long outDuration=0L;
+            for(int i=0;i<out.getTrackCount();i++){
+                MediaFormat f=out.getTrackFormat(i);
+                String mime=f.containsKey(MediaFormat.KEY_MIME)?f.getString(MediaFormat.KEY_MIME):null;
+                if(mime!=null&&mime.startsWith("video/"))video=true;
+                if(mime!=null&&mime.startsWith("audio/"))audio=true;
+                if(f.containsKey(MediaFormat.KEY_DURATION))outDuration=Math.max(outDuration,f.getLong(MediaFormat.KEY_DURATION));
+            }
+            if(!video)return "the MP4 has no video track";
+            if(!audio)return "the MP4 has no audio track";
+            if(outDuration<=0L)return "the MP4 duration is unavailable";
+            in.setDataSource(source.getAbsolutePath()); long inDuration=0L;
+            for(int i=0;i<in.getTrackCount();i++){MediaFormat f=in.getTrackFormat(i);if(f.containsKey(MediaFormat.KEY_DURATION))inDuration=Math.max(inDuration,f.getLong(MediaFormat.KEY_DURATION));}
+            if(inDuration>0L&&Math.abs(outDuration-inDuration)>Math.max(1500000L,inDuration/50L))return "the exported duration differs materially from the source";
+            return null;
+        } catch(Exception e) { return "the MP4 streams could not be inspected"; }
+        finally { try{out.release();}catch(Exception ignored){} try{in.release();}catch(Exception ignored){} }
+    }
     private static boolean hasEncoder(String mimeType) {
         try {
             MediaCodecList codecs = new MediaCodecList(MediaCodecList.REGULAR_CODECS);
