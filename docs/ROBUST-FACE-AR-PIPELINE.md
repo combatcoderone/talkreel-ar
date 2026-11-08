@@ -159,6 +159,25 @@ Expose a conservative auto mode plus user strength controls. Clamp gains and ton
 
 This work is complete only when the MediaPipe model and dependency are actually wired into both supported build paths (or the manual build is explicitly documented as rectangle-only), CameraTransform is used by preview and encoder, mesh-based effects render from tracked landmarks, lighting compensation is implemented and tuned, automated tests pass, CI builds, and the device matrix is signed off. A document or successful compile alone is not evidence of robust tracking.
 
-## Current repository gap
+## Implementation status on feature/robust-face-ar-pipeline
 
-The current `MainActivity` consumes `CaptureResult.STATISTICS_FACES` and selects `faces[0]`. `ArCompositor` uses a face rectangle in its shader and currently ignores EGL swap results and suppresses runtime exceptions. This is a useful camera-to-EGL foundation, but it is not a robust landmark/mesh pipeline. The next implementation increment must replace the rectangle source, centralize transforms, and make GL failures observable before adding complex effects.
+The following hardening has been implemented in this branch and compiles in both the dependency-free APK build and the Media3-enabled Gradle build:
+
+- Camera2 continues to prefer `STATISTICS_FACE_DETECT_MODE_FULL`, falling back to SIMPLE where FULL is unavailable.
+- `FaceTrackSmoother` selects a stable primary face using vendor face IDs and geometric association, rejects low-confidence/small detections, smooths bounds and eye/mouth anchors, and briefly coasts with fading confidence for up to 180 ms before clearing.
+- `CameraTransform` maps active-array face bounds and hardware eye/mouth points through the per-frame crop region and explicit front-camera mirroring.
+- The compositor uses available eye anchors for glasses placement and eye-axis orientation, and a mouth anchor for lip placement; it falls back to rectangle-derived geometry when hardware landmarks are absent.
+- A conservative face-region shadow lift and highlight roll-off are applied in the shader. This is a bounded visual compensation pass, not a replacement for sensor AE/AWB or a full face-segmentation relighting model.
+- EGL make-current, presentation-time, swap-buffer and frame callback failures are now logged with rate limiting instead of being silently swallowed.
+
+### Remaining release blockers
+
+This branch is an interim hardening step, **not the full production face AR system** described above. The following are not implemented yet:
+
+1. MediaPipe Face Landmarker (478 3D landmarks, blendshapes and facial transformation matrices) is not wired into the camera frame stream. Camera2 hardware landmarks are sparse, vendor-dependent and can disappear at extreme yaw, pitch or occlusion.
+2. The current `CameraTransform` handles crop and mirroring but does not yet compose sensor orientation, display rotation, stream aspect-fill, and encoder target transforms into one calibrated matrix. Do not claim arbitrary orientation correctness.
+3. Glasses and lips use sparse 2D hardware anchors. Full 3D mesh deformation, depth-tested occlusion, canonical face UVs and 3D asset projection are not implemented.
+4. Lighting correction is deliberately conservative and shader-local. There is no face segmentation, regional histogram/percentile estimator, robust white-balance model, or temporal exposure controller.
+5. No physical-device validation has been run here. Hardware face detection modes, sensor stream transforms, camera crop behavior, EGL surface behavior and lighting vary by OEM.
+
+The build checks prove source compatibility only. The release gate remains the automated geometry/tracking tests and the Pixel/Samsung device matrix in this document. Do not ship this as "tracks any face in any position" until those blockers are closed.
