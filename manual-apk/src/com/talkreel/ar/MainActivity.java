@@ -376,15 +376,15 @@ public class MainActivity extends Activity {
             }
         });
         rowPro.addView(faceButton);
-        final Button arFilterButton = UiStyle.dark(this, "Camera look: " + ProFrameView.filterName(AppState.arFilter));
+        final Button arFilterButton = UiStyle.dark(this, "Look: " + ProFrameView.filterName(AppState.arFilter));
         arFilterButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.arFilter = (AppState.arFilter + 1) % ProFrameView.FILTER_COUNT;
                 frameView.setFilter(AppState.arFilter);
                 if (arCompositor != null) arCompositor.setFilter(AppState.arFilter % 6);
-                arFilterButton.setText("Camera look: " + ProFrameView.filterName(AppState.arFilter));
+                arFilterButton.setText("Look: " + ProFrameView.filterName(AppState.arFilter));
                 savePrefs();
-                statusView.setText("AR effect: " + ProFrameView.filterName(AppState.arFilter) + " · Applied to preview and recording");
+                statusView.setText("Look: " + ProFrameView.filterName(AppState.arFilter) + " · Face-tracked preview overlay");
             }
         });
         rowPro.addView(arFilterButton);
@@ -762,7 +762,7 @@ public class MainActivity extends Activity {
         final Spinner ar = new Spinner(this); String[] effects = new String[ProFrameView.FILTER_COUNT];
         for(int i=0;i<effects.length;i++) effects[i]=ProFrameView.filterName(i);
         ar.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, effects));
-        ar.setSelection(AppState.arFilter); form.addView(settingsLabel("Camera look")); form.addView(ar);
+        ar.setSelection(AppState.arFilter); form.addView(settingsLabel("Face-tracked makeup & Halloween looks")); form.addView(ar);
         final Spinner music = new Spinner(this); String[] tracks = new String[MusicCatalog.TRACKS.length];
         for(int i=0;i<tracks.length;i++) tracks[i]=MusicCatalog.TRACKS[i].title;
         music.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, tracks));
@@ -1021,6 +1021,8 @@ public class MainActivity extends Activity {
             public void run() {
                 try { if (captureSession != null) captureSession.close(); } catch (Exception ignored) {}
                 captureSession = null;
+                if (faceImageReader != null) { try { faceImageReader.close(); } catch (Exception ignored) {} faceImageReader = null; }
+                if (frameView != null) frameView.clearFaces();
                 if (arCompositor != null) {
                     try { arCompositor.stop(); } catch (Exception ignored) {}
                     arCompositor = null;
@@ -1857,6 +1859,7 @@ public class MainActivity extends Activity {
                     }
                     try { if (captureSession != null) captureSession.close(); } catch (Exception ignored) {}
                     captureSession = null;
+                    if (faceImageReader != null) { try { faceImageReader.close(); } catch (Exception ignored) {} faceImageReader = null; }
                     if (arCompositor != null) {
                         try { arCompositor.stop(); } catch (Exception ignored) {}
                         arCompositor = null;
@@ -1866,6 +1869,7 @@ public class MainActivity extends Activity {
                 }
             });
         }
+        if (faceTrackingEngine != null) { try { faceTrackingEngine.close(); } catch (Exception ignored) {} faceTrackingEngine = null; }
         if (cameraThread != null) cameraThread.quitSafely();
     }
 }
