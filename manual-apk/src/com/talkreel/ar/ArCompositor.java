@@ -239,11 +239,11 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
                 drawPolygon(mesh,LEFT_EYE,0xEE111111,0);
                 drawPolygon(mesh,RIGHT_EYE,0xEE111111,0);
                 drawTriangle(mesh,1,4,5,0xCC111111);
-                drawTeeth(mesh,0xFFECE8DD,0.018f+(expr.length>0?expr[0]*0.025f:0));
+                drawTeeth(mesh,0xFFECE8DD,0.018f+(expr.length>0?expr[24]*0.025f:0));
                 drawCrack(mesh,10,0xFF262626); drawCrack(mesh,234,0xFF262626);
                 break;
             case 11: // Vampire
-                drawFang(mesh,78,88,0.025f+(expr.length>0?expr[0]*0.035f:0));
+                drawFang(mesh,78,88,0.025f+(expr.length>0?expr[24]*0.035f:0));
                 drawFang(mesh,308,318,0.025f+(expr.length>0?expr[0]*0.035f:0));
                 drawCircle(mesh,1,0x99C20E2D,0.012f);
                 break;
