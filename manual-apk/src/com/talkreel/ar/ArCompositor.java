@@ -330,7 +330,7 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
                 break;
             case 25: // Halo.
                 float[] top=point(m,10);
-                drawCircleAt(top[0],top[1]-0.12f,0xFFFFE7A8,0.105f,0.018f);
+                drawEllipseOutline(top[0],top[1]-0.12f,0xFFFFE7A8,0.105f,0.018f,2.5f);
                 break;
             case 26: // Butterfly wings at the temples.
                 drawTriangle(m,234,127,93,0xBB7BC8F4);
@@ -361,10 +361,11 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         for(int i=0;i<offsets.length;i+=2){p[i]=center[0]+offsets[i];p[i+1]=center[1]+offsets[i+1];}
         return p;
     }
-    private void drawCircleAt(float x,float y,int color,float rx,float ry) {
+    private void drawEllipseOutline(float x,float y,int color,float rx,float ry,float width) {
         float[] p=new float[48];
         for(int i=0;i<24;i++){double a=i*Math.PI/12;p[i*2]=x+(float)Math.cos(a)*rx;p[i*2+1]=y+(float)Math.sin(a)*ry;}
-        drawPolygonCoords(p,color);
+        drawPolyline(p,color,width);
+        drawLineCoords(p[0],p[1],p[p.length-2],p[p.length-1],color,width);
     }
     private void drawOutline(float[] m,int[] indices,int color,float width) {
         float[] p=new float[indices.length*2];
