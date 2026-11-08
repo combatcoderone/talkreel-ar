@@ -1,4 +1,5 @@
 name: Android APK build
+# Gradle is required for bundled ML Kit face contours and Media3 dependencies.
 
 on:
   push:
