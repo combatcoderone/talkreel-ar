@@ -147,25 +147,22 @@ public final class FaceTrackingEngine implements AutoCloseable {
     }
     private static int clamp(int v){return Math.max(0,Math.min(255,v));}
 
-    // Key expression channels consumed by animated effect geometry.
-    private static int blendIndex(String n){
-        switch(n){
-            case "jawOpen":return 0;
-            case "mouthSmileLeft":return 1;
-            case "mouthSmileRight":return 2;
-            case "eyeBlinkLeft":return 3;
-            case "eyeBlinkRight":return 4;
-            case "browInnerUp":return 5;
-            case "browDownLeft":return 6;
-            case "browDownRight":return 7;
-            case "mouthFrownLeft":return 8;
-            case "mouthFrownRight":return 9;
-            case "cheekSquintLeft":return 10;
-            case "cheekSquintRight":return 11;
-            case "noseSneerLeft":return 12;
-            case "noseSneerRight":return 13;
-            default:return -1;
-        }
+    // Full ARKit 52-channel ordering; scores remain available to every lens.
+    private static final String[] BLEND_NAMES={
+        "browDownLeft","browDownRight","browInnerUp","browOuterUpLeft","browOuterUpRight",
+        "cheekPuff","cheekSquintLeft","cheekSquintRight","eyeBlinkLeft","eyeBlinkRight",
+        "eyeLookDownLeft","eyeLookDownRight","eyeLookInLeft","eyeLookInRight","eyeLookOutLeft",
+        "eyeLookOutRight","eyeLookUpLeft","eyeLookUpRight","eyeSquintLeft","eyeSquintRight",
+        "eyeWideLeft","eyeWideRight","jawForward","jawLeft","jawOpen","jawRight","mouthClose",
+        "mouthDimpleLeft","mouthDimpleRight","mouthFrownLeft","mouthFrownRight","mouthFunnel",
+        "mouthLeft","mouthLowerDownLeft","mouthLowerDownRight","mouthPressLeft","mouthPressRight",
+        "mouthPucker","mouthRight","mouthRollLower","mouthRollUpper","mouthShrugLower",
+        "mouthShrugUpper","mouthSmileLeft","mouthSmileRight","mouthStretchLeft","mouthStretchRight",
+        "mouthUpperUpLeft","mouthUpperUpRight","noseSneerLeft","noseSneerRight","tongueOut"
+    };
+    private static int blendIndex(String name){
+        for(int i=0;i<BLEND_NAMES.length;i++)if(BLEND_NAMES[i].equals(name))return i;
+        return -1;
     }
 
     @Override public void close(){
