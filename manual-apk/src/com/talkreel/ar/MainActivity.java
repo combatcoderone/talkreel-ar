@@ -1337,8 +1337,9 @@ public class MainActivity extends Activity {
                                 AppState.faceFound = frame != null && frame.faceCount() > 0;
                                 if (coachView != null) coachView.setText(!AppState.faceFound
                                         ? "Face not found · Move closer and face the camera"
-                                        : "3D face tracking · " + frame.faceCount()
-                                                + (frame.faceCount()==1 ? " face · 478 landmarks" : " faces · 478 landmarks each"));
+                                        : "Face mesh · " + frame.faceCount()
+                                                + (frame.faceCount()==1 ? " face" : " faces")
+                                                + " · 478 pts · " + frame.inferenceMs + " ms inference");
                             }
                         });
                     }
