@@ -1327,10 +1327,11 @@ public class MainActivity extends Activity {
                                                   final int width, final int height) {
                         mainHandler.post(new Runnable() {
                             @Override public void run() {
-                                if (frameView != null && !activityDestroyed)
+                                if (frameView != null && !activityDestroyed) {
                                     int uprightWidth = (faceInputRotationDegrees % 180 == 90) ? height : width;
-                                int uprightHeight = (faceInputRotationDegrees % 180 == 90) ? width : height;
-                                frameView.setFaceResults(faces, uprightWidth, uprightHeight, 0, isFrontCamera);
+                                    int uprightHeight = (faceInputRotationDegrees % 180 == 90) ? width : height;
+                                    frameView.setFaceResults(faces, uprightWidth, uprightHeight, 0, isFrontCamera);
+                                }
                                 if (coachView != null && !activityDestroyed)
                                     coachView.setText(faces.isEmpty()
                                             ? "Face not found · Move closer and face the camera"
