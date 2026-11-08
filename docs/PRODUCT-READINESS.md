@@ -117,3 +117,33 @@ The AAB is still a release *candidate*, not a release: physical-device acceptanc
 - The camera coach/status line reports per-frame inference time in milliseconds to make tracking latency measurable during device QA.
 - These changes improve stability and diagnostics. They do not add rigged 3D assets, face segmentation, depth occlusion or physical-device certification.
 - Selected looks now use smile and blink blendshape scores for subtle cheek and eyelid accents; jaw-open scores continue to drive Halloween fang/teeth length.
+## Commercial face-AR benchmark — November 2026
+
+The closest directly comparable commercial reference used for this engineering audit is Banuba Face AR SDK. This is a capability comparison, not a claim that TalkReel has been benchmarked against Banuba on identical hardware.
+
+| Capability | TalkReel v0.9.6 candidate (PR #19) | Banuba published Face AR SDK |
+|---|---|---|
+| Face representation | MediaPipe: 478 3D landmarks, 52 blendshapes and a 4×4 face transform | Proprietary 3D face model / morph representation |
+| Faces | Up to 3 in the current implementation | Published technical table reports up to 5 |
+| Tracking performance | Not yet measured on physical devices | Published Android table reports about 25 FPS on low-tier and 30 FPS on high-tier for one face |
+| Pose / orientation | Sensor/display rotation is applied; device and preview/encoder combinations still need QA | Vendor markets extreme pose and 360° camera rotation; validate on target devices |
+| Occlusion | No semantic face-part segmentation or depth-tested occlusion | Vendor advertises partial-occlusion support; validate with its demo |
+| Effects | 30 named 2D GPU looks driven by 3D landmarks and blendshapes; shared preview/recording compositor | Commercial Face AR runtime and authoring ecosystem |
+| Lighting | Basic colour looks; no learned face relighting or robust face-region exposure model | Vendor advertises low-light adaptation; validate on target devices |
+| Evidence | CI build and unit tests; physical-device matrix outstanding | Vendor publishes lab performance figures |
+
+Banuba's published figures are lab results, not guarantees. Its marketing claims about pose and occlusion should not be treated as independently verified test results.
+
+- [Banuba technical specification](https://docs.banuba.com/far-sdk/tutorials/capabilities/technical_specification/)
+- [Banuba SDK feature matrix](https://docs.banuba.com/far-sdk/tutorials/capabilities/sdk_features/)
+- [Google MediaPipe Face Landmarker output specification](https://developers.google.com/edge/mediapipe/solutions/vision/face_landmarker)
+
+### Acceptance targets before claiming commercial-grade tracking
+
+1. Measure sustained FPS, p50/p95 inference latency, dropped-frame rate, memory churn and thermal behaviour on at least one low/mid-range and one high-end Android device.
+2. Verify camera/display rotation, front-camera mirroring, aspect-fill crop, preview-to-encoder alignment and saved MP4 parity for every supported orientation.
+3. Test yaw/pitch/roll, face-at-edge, partial occlusion, glasses, rapid motion, backlight, low light and multiple faces crossing.
+4. Add semantic face-part segmentation and depth-aware occlusion before claiming realistic 3D lenses or makeup.
+5. Run the same scripted clips and device matrix against Banuba's trial SDK if a vendor-quality comparison is required. Do not compare TalkReel's unmeasured performance with Banuba's published lab FPS as if they were equivalent.
+
+**Current positioning:** TalkReel has an on-device 3D landmark-driven AR foundation, but it is not yet a Banuba/Snap Camera Kit equivalent. Physical-device validation and 3D occlusion/segmentation remain release gates.
