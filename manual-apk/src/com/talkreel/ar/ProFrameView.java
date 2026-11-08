@@ -4,7 +4,6 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.graphics.Path;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.util.AttributeSet;
@@ -58,19 +57,14 @@ public class ProFrameView extends View {
         drawSelfieFrame(c,w,h);
     }
     private void drawSelfieFrame(Canvas c,int w,int h) {
-        p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(3); p.setColor(Color.argb(145,255,255,255));
-            float cx=w/2f, cy=h*.43f, fw=w*.66f, fh=h*.66f;
-            RectF frame=new RectF(cx-fw/2f,cy-fh/2f,cx+fw/2f,cy+fh/2f);
-            if(frameShape==1) c.drawOval(frame,p);
-            else if(frameShape==2) {
-                Path heart=new Path();
-                heart.moveTo(cx,cy+fh*.43f);
-                heart.cubicTo(cx-fw*.12f,cy+fh*.23f,cx-fw*.53f,cy-fh*.02f,cx-fw*.43f,cy-fh*.29f);
-                heart.cubicTo(cx-fw*.34f,cy-fh*.52f,cx-fw*.08f,cy-fh*.47f,cx,cy-fh*.24f);
-                heart.cubicTo(cx+fw*.08f,cy-fh*.47f,cx+fw*.34f,cy-fh*.52f,cx+fw*.43f,cy-fh*.29f);
-                heart.cubicTo(cx+fw*.53f,cy-fh*.02f,cx+fw*.12f,cy+fh*.23f,cx,cy+fh*.43f);
-                heart.close(); c.drawPath(heart,p);
-            } else if(frameShape==3) c.drawOval(new RectF(cx-fw*.43f,cy-fh*.48f,cx+fw*.43f,cy+fh*.48f),p);
-            else c.drawRoundRect(frame,18,18,p);
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(2.5f);
+        p.setColor(Color.argb(125,255,255,255));
+        float cx=w/2f, cy=h*.43f, fw=w*.66f, fh=h*.66f;
+        RectF frame=new RectF(cx-fw/2f,cy-fh/2f,cx+fw/2f,cy+fh/2f);
+        if(frameShape==1) c.drawOval(frame,p);
+        else if(frameShape==2) c.drawOval(new RectF(cx-fw*.40f,cy-fh*.50f,cx+fw*.40f,cy+fh*.50f),p);
+        else if(frameShape==3) c.drawRoundRect(new RectF(cx-fw*.40f,cy-fh*.50f,cx+fw*.40f,cy+fh*.50f),24,24,p);
+        else c.drawRoundRect(frame,24,24,p);
     }
-}
+}}
