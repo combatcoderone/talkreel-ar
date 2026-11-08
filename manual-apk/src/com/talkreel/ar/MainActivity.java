@@ -260,7 +260,7 @@ public class MainActivity extends Activity {
         previewBox.addView(frameView);
         root.addView(previewBox);
         TextView arNote = new TextView(this);
-        arNote.setText("AR effects are composited by the GPU into Studio preview and recorded video. Effects use camera face rectangles, not dense facial landmarks.");
+        arNote.setText("AR effects are composited into preview and recording. Face tracking uses smoothed Camera2 FULL face bounds plus hardware eye/mouth anchors when available; dense 3D mesh tracking is not yet enabled.");
         arNote.setTextColor(0xFFAAAAAA);
         arNote.setTextSize(11);
         arNote.setPadding(8, 3, 8, 5);
