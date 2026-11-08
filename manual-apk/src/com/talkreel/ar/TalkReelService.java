@@ -86,7 +86,10 @@ public class TalkReelService extends Service {
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(pi)
             .build();
-        if (android.os.Build.VERSION.SDK_INT >= 29) {
+        // API 34+ rejects startForeground with type 0 when the service declares
+        // foregroundServiceType in the manifest, and the overlay-only paths used
+        // to pass 0 on Android 10 to 13. Always use the 2-arg call in that case.
+        if (android.os.Build.VERSION.SDK_INT >= 29 && foregroundType != 0) {
             startForeground(1, n, foregroundType);
         } else {
             startForeground(1, n);

@@ -10,6 +10,7 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.ContentValues;
 import android.content.pm.PackageManager;
+import android.graphics.Point;
 import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraCaptureSession;
@@ -108,6 +109,17 @@ public class MainActivity extends Activity {
     private CameraManager cameraManager;
     private CameraManager.AvailabilityCallback cameraAvailabilityCallback;
     private SpeechRecognizer speechRecognizer;
+    // Camera geometry. Everything AR depends on these being right.
+    private CameraCharacteristics cameraCharacteristics;
+    private int sensorOrientation = 90;
+    private int displayRotationDegrees = 0;
+    private int previewRotation = 270;
+    private boolean cameraMirrored = true;
+    private int captureWidth = 1280;
+    private int captureHeight = 960;
+    private float previewCropX = 1f;
+    private float previewCropY = 1f;
+    private int faceMissCount = 0;
     private boolean speechOn = false;
     private String currentCaptionLang = "";
     private long lastCaptionAt = 0;
@@ -249,7 +261,19 @@ public class MainActivity extends Activity {
         root.addView(audioView);
 
         FrameLayout previewBox = new FrameLayout(this);
-        previewBox.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 520));
+        // 9:16 preview: the on-screen framing, the AR overlay and the recorded
+        // MP4 then all share one composition. The old fixed 520px box was a
+        // wide letterbox, so the camera image was squashed and the face
+        // effects were drawn in the wrong place.
+        int screenW = getResources().getDisplayMetrics().widthPixels;
+        int screenH = getResources().getDisplayMetrics().heightPixels;
+        int boxW = Math.max(180, screenW - 32);
+        int boxH = Math.min((int) (screenH * 0.44f), boxW * 16 / 9);
+        boxW = boxH * 9 / 16;
+        LinearLayout.LayoutParams previewParams = new LinearLayout.LayoutParams(boxW, boxH);
+        previewParams.gravity = android.view.Gravity.CENTER_HORIZONTAL;
+        previewParams.setMargins(0, 6, 0, 6);
+        previewBox.setLayoutParams(previewParams);
         textureView = new TextureView(this);
         textureView.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         previewBox.addView(textureView);
@@ -260,7 +284,7 @@ public class MainActivity extends Activity {
         previewBox.addView(frameView);
         root.addView(previewBox);
         TextView arNote = new TextView(this);
-        arNote.setText("AR effects are composited by the GPU into Studio preview and recorded video. Effects use camera face rectangles, not dense facial landmarks.");
+        arNote.setText("AR effects are composited by the GPU into the Studio preview and the recorded video. Tracking uses camera face detection with eye and mouth points, smoothed across frames.");
         arNote.setTextColor(0xFFAAAAAA);
         arNote.setTextSize(11);
         arNote.setPadding(8, 3, 8, 5);
@@ -615,7 +639,7 @@ public class MainActivity extends Activity {
         if (android.os.Build.VERSION.SDK_INT >= 30) {
             getWindow().setDecorFitsSystemWindows(false);
         }
-        if (android.os.Build.VERSION.SDK_INT >= 35) {
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
             outer.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
                 public android.view.WindowInsets onApplyWindowInsets(View view, android.view.WindowInsets insets) {
                     android.graphics.Insets bars = insets.getInsets(
@@ -1283,45 +1307,185 @@ public class MainActivity extends Activity {
         @Override
         public void onCaptureCompleted(CameraCaptureSession s, CaptureRequest req, TotalCaptureResult result) {
             android.hardware.camera2.params.Face[] faces = result.get(CaptureResult.STATISTICS_FACES);
-            if (faces != null && faces.length > 0 && frameView != null) {
-                List<Rect> rects = new ArrayList<Rect>();
-                int vw = frameView.getWidth();
-                int vh = frameView.getHeight();
-                if (vw > 0 && vh > 0) {
-                    for (android.hardware.camera2.params.Face f : faces) {
-                        Rect r = f.getBounds();
-                        Rect mapped;
-                        if (activeArray != null && activeArray.width() > 0 && activeArray.height() > 0) {
-                            int left = (r.left - activeArray.left) * vw / activeArray.width();
-                            int top = (r.top - activeArray.top) * vh / activeArray.height();
-                            int right = (r.right - activeArray.left) * vw / activeArray.width();
-                            int bottom = (r.bottom - activeArray.top) * vh / activeArray.height();
-                            if (isFrontCamera) {
-                                int ml = vw - right;
-                                int mr = vw - left;
-                                left = ml;
-                                right = mr;
-                            }
-                            mapped = new Rect(left, top, right, bottom);
-                        } else {
-                            mapped = new Rect(r.left * vw / 1000, r.top * vh / 1000,
-                                    r.right * vw / 1000, r.bottom * vh / 1000);
-                        }
-                        rects.add(mapped);
-                    }
-                    frameView.setFaces(rects);
-                    if (arCompositor != null && !rects.isEmpty()) {
-                        Rect face = rects.get(0);
-                        arCompositor.setFaceRect(face.left / (float) vw, face.top / (float) vh,
-                                face.right / (float) vw, face.bottom / (float) vh, isFrontCamera);
-                    }
-                    return;
+            android.hardware.camera2.params.Face face = null;
+            if (faces != null) {
+                for (android.hardware.camera2.params.Face candidate : faces) {
+                    if (candidate == null || candidate.getBounds() == null) continue;
+                    if (face == null || candidate.getScore() > face.getScore()) face = candidate;
                 }
             }
-            if (frameView != null) frameView.clearFaces();
-            if (arCompositor != null) arCompositor.clearFace();
+            if (face == null || activeArray == null || activeArray.width() <= 0 || activeArray.height() <= 0) {
+                faceMissCount++;
+                if (faceMissCount > 6 && frameView != null) frameView.setFaceFound(false);
+                return;
+            }
+            Rect bounds = face.getBounds();
+            float[] topLeft = mapSensorPoint(bounds.left, bounds.top, new float[2]);
+            float[] bottomRight = mapSensorPoint(bounds.right, bounds.bottom, new float[2]);
+            float left = Math.min(topLeft[0], bottomRight[0]);
+            float right = Math.max(topLeft[0], bottomRight[0]);
+            float top = Math.min(topLeft[1], bottomRight[1]);
+            float bottom = Math.max(topLeft[1], bottomRight[1]);
+            if (right - left <= 0.01f || bottom - top <= 0.01f) {
+                faceMissCount++;
+                if (faceMissCount > 6 && frameView != null) frameView.setFaceFound(false);
+                return;
+            }
+
+            Point leftEye = face.getLeftEyePosition();
+            Point rightEye = face.getRightEyePosition();
+            Point mouth = face.getMouthPosition();
+            float[] eyeOne = leftEye == null ? null : mapSensorPoint(leftEye.x, leftEye.y, new float[2]);
+            float[] eyeTwo = rightEye == null ? null : mapSensorPoint(rightEye.x, rightEye.y, new float[2]);
+            float[] mouthPoint = mouth == null ? null : mapSensorPoint(mouth.x, mouth.y, new float[2]);
+
+            float eyeA = 0f, eyeAy = 0f, eyeBx = 0f, eyeBy = 0f, angle = 0f;
+            if (eyeOne != null && eyeTwo != null) {
+                if (eyeOne[0] <= eyeTwo[0]) {
+                    eyeA = eyeOne[0]; eyeAy = eyeOne[1];
+                    eyeBx = eyeTwo[0]; eyeBy = eyeTwo[1];
+                } else {
+                    eyeA = eyeTwo[0]; eyeAy = eyeTwo[1];
+                    eyeBx = eyeOne[0]; eyeBy = eyeOne[1];
+                }
+                float dx = eyeBx - eyeA;
+                float dy = eyeBy - eyeAy;
+                if (dx > 0.001f) angle = (float) Math.atan2(dy, dx);
+                angle = Math.max(-0.7f, Math.min(0.7f, angle));
+            } else {
+                float w = right - left;
+                float h = bottom - top;
+                eyeA = left + w * 0.30f;
+                eyeAy = top + h * 0.40f;
+                eyeBx = left + w * 0.70f;
+                eyeBy = top + h * 0.40f;
+            }
+            float mouthX;
+            float mouthY;
+            if (mouthPoint != null) {
+                mouthX = mouthPoint[0];
+                mouthY = mouthPoint[1];
+            } else {
+                mouthX = (left + right) * 0.5f;
+                mouthY = top + (bottom - top) * 0.72f;
+            }
+            faceMissCount = 0;
+            if (arCompositor != null) {
+                arCompositor.setFace(left, top, right, bottom, eyeA, eyeAy, eyeBx, eyeBy,
+                        mouthX, mouthY, angle);
+            }
+            if (frameView != null) frameView.setFaceFound(true);
         }
     };
+
+    /**
+     * Camera2 sensor point to the upright, mirrored, cover-cropped display
+     * space the AR shader draws in. Matches ArCompositor's texture transform.
+     */
+    private float[] mapSensorPoint(int x, int y, float[] out) {
+        float sx = (x - activeArray.left) / (float) activeArray.width();
+        float sy = (y - activeArray.top) / (float) activeArray.height();
+        float[] mapped = ArCompositor.sensorToDisplay(sx, sy, previewRotation,
+                cameraMirrored, previewCropX, previewCropY);
+        out[0] = mapped[0];
+        out[1] = mapped[1];
+        return out;
+    }
+
+    private int currentDisplayRotation() {
+        try {
+            int rotation = getWindowManager().getDefaultDisplay().getRotation();
+            if (rotation == android.view.Surface.ROTATION_90) return 90;
+            if (rotation == android.view.Surface.ROTATION_180) return 180;
+            if (rotation == android.view.Surface.ROTATION_270) return 270;
+            return 0;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Pick a capture size that matches the sensor's own aspect ratio, so the
+     * full active array maps onto the buffer and Camera2 face coordinates line
+     * up with the image. A 16:9 request on a 4:3 sensor would silently crop
+     * and every AR effect would drift off the face.
+     */
+    private int[] chooseCaptureSize(CameraCharacteristics chars) {
+        int[] fallback = {1280, 960};
+        try {
+            android.hardware.camera2.params.StreamConfigurationMap map =
+                    chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+            if (map == null) return fallback;
+            android.util.Size[] sizes = map.getOutputSizes(SurfaceTexture.class);
+            if (sizes == null || sizes.length == 0) return fallback;
+            Rect active = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+            double wantAspect = active == null || active.height() <= 0
+                    ? 4.0 / 3.0 : active.width() / (double) active.height();
+            android.util.Size best = null;
+            double bestScore = Double.MAX_VALUE;
+            android.util.Size loose = null;
+            double looseScore = Double.MAX_VALUE;
+            for (android.util.Size size : sizes) {
+                if (size == null) continue;
+                int longEdge = Math.max(size.getWidth(), size.getHeight());
+                int shortEdge = Math.min(size.getWidth(), size.getHeight());
+                if (shortEdge <= 0) continue;
+                double aspect = longEdge / (double) shortEdge;
+                double score = Math.abs(Math.log(Math.max(0.1, longEdge / 1440.0)));
+                double aspectError = Math.abs(aspect - wantAspect);
+                if (aspectError < 0.03 && score < bestScore) {
+                    bestScore = score;
+                    best = size;
+                }
+                if (aspectError + score < looseScore) {
+                    looseScore = aspectError + score;
+                    loose = size;
+                }
+            }
+            android.util.Size chosen = best != null ? best : loose;
+            if (chosen == null) return fallback;
+            return new int[]{chosen.getWidth(), chosen.getHeight()};
+        } catch (Exception e) {
+            return fallback;
+        }
+    }
+
+    /** Autofocus, stabilisation and a steady 30 fps for clean AR and video. */
+    private void applyCaptureQuality(CaptureRequest.Builder builder) {
+        if (builder == null || cameraCharacteristics == null) return;
+        try {
+            int[] afModes = cameraCharacteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
+            if (afModes != null) {
+                for (int mode : afModes) {
+                    if (mode == CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO) {
+                        builder.set(CaptureRequest.CONTROL_AF_MODE, mode);
+                        break;
+                    }
+                }
+            }
+            int[] stabilization = cameraCharacteristics.get(
+                    CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES);
+            if (stabilization != null) {
+                for (int mode : stabilization) {
+                    if (mode == CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON) {
+                        builder.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, mode);
+                        break;
+                    }
+                }
+            }
+            android.util.Range<Integer>[] fpsRanges = cameraCharacteristics.get(
+                    CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
+            if (fpsRanges != null) {
+                for (android.util.Range<Integer> range : fpsRanges) {
+                    if (range.getUpper() == 30 && range.getLower() <= 30) {
+                        builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, range);
+                        break;
+                    }
+                }
+            }
+            builder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, faceDetectMode);
+        } catch (Exception ignored) {}
+    }
 
     private void showCameraWaiting() {
         waitingForCamera = true;
@@ -1361,7 +1525,12 @@ public class MainActivity extends Activity {
                         }
                     }
                     CameraCharacteristics chars = manager.getCameraCharacteristics(cameraId);
+                    cameraCharacteristics = chars;
                     activeArray = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+                    Integer sensor = chars.get(CameraCharacteristics.SENSOR_ORIENTATION);
+                    sensorOrientation = sensor == null ? 90 : sensor;
+                    displayRotationDegrees = currentDisplayRotation();
+                    previewRotation = (((sensorOrientation - displayRotationDegrees) % 360) + 360) % 360;
                     faceDetectMode = CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF;
                     int[] faceModes = chars.get(CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES);
                     if (faceModes != null) {
@@ -1372,6 +1541,10 @@ public class MainActivity extends Activity {
                     }
                     Integer facing = chars.get(CameraCharacteristics.LENS_FACING);
                     isFrontCamera = facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT;
+                    cameraMirrored = isFrontCamera;
+                    int[] captureSize = chooseCaptureSize(chars);
+                    captureWidth = captureSize[0];
+                    captureHeight = captureSize[1];
                     if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) { cameraOpening = false; return; }
                     manager.openCamera(cameraId, new CameraDevice.StateCallback() {
                         public void onOpened(CameraDevice camera) {
@@ -1396,12 +1569,14 @@ public class MainActivity extends Activity {
                         }
                         public void onDisconnected(CameraDevice camera) {
                             cameraOpening = false;
+                            pendingRecordWhenCameraReady = false;
                             camera.close();
                             if (cameraDevice == camera) cameraDevice = null;
                             if (arCompositor != null) { try { arCompositor.stop(); } catch (Exception ignored) {} arCompositor = null; }
                         }
                         public void onError(CameraDevice camera, int error) {
                             cameraOpening = false;
+                            pendingRecordWhenCameraReady = false;
                             camera.close();
                             if (cameraDevice == camera) cameraDevice = null;
                             if (arCompositor != null) { try { arCompositor.stop(); } catch (Exception ignored) {} arCompositor = null; }
@@ -1419,6 +1594,7 @@ public class MainActivity extends Activity {
                     }, cameraHandler);
                 } catch (CameraAccessException e) {
                     cameraOpening = false;
+                    pendingRecordWhenCameraReady = false;
                     if (e.getReason() == CameraAccessException.CAMERA_IN_USE || e.getReason() == CameraAccessException.MAX_CAMERAS_IN_USE) {
                         showCameraWaiting();
                     } else {
@@ -1430,6 +1606,7 @@ public class MainActivity extends Activity {
                     }
                 } catch (Exception e) {
                     cameraOpening = false;
+                    pendingRecordWhenCameraReady = false;
                     mainHandler.post(new Runnable() {
                         public void run() { if (statusView != null) statusView.setText("Camera error"); }
                     });
@@ -1448,16 +1625,22 @@ public class MainActivity extends Activity {
             if (cameraDevice == null || textureView == null) return;
             SurfaceTexture texture = textureView.getSurfaceTexture();
             if (texture == null) return;
-            if (arCompositor == null) arCompositor = new ArCompositor(cameraHandler);
-            Surface cameraSurface = arCompositor.start(texture, 720, 1280);
-            arCompositor.setFilter(AppState.arFilter);
             if (captureSession != null) {
                 try { captureSession.close(); } catch (Exception ignored) {}
                 captureSession = null;
             }
+            int previewW = textureView.getWidth() > 0 ? textureView.getWidth() : 720;
+            int previewH = textureView.getHeight() > 0 ? textureView.getHeight() : 1280;
+            float[] crop = ArCompositor.cropFor(captureWidth, captureHeight, previewRotation, previewW, previewH);
+            previewCropX = crop[0];
+            previewCropY = crop[1];
+            if (arCompositor == null) arCompositor = new ArCompositor(cameraHandler);
+            Surface cameraSurface = arCompositor.start(texture, captureWidth, captureHeight,
+                    previewW, previewH, previewRotation, cameraMirrored);
+            arCompositor.setFilter(AppState.arFilter);
             previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             previewBuilder.addTarget(cameraSurface);
-            previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, faceDetectMode);
+            applyCaptureQuality(previewBuilder);
             cameraDevice.createCaptureSession(Arrays.asList(cameraSurface), new CameraCaptureSession.StateCallback() {
                 public void onConfigured(CameraCaptureSession session) {
                     captureSession = session;
@@ -1544,6 +1727,10 @@ public class MainActivity extends Activity {
                     recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
                     recorder.setVideoSize(AppState.exportWidth(), AppState.exportHeight());
                     recorder.setVideoFrameRate(30);
+                    recorder.setVideoEncodingBitRate(AppState.isPro ? 16000000 : 8000000);
+                    // The GPU output is already upright and mirrored, so the
+                    // encoder must not rotate it again.
+                    recorder.setOrientationHint(0);
                     File mediaBase = getExternalFilesDir(Environment.DIRECTORY_MOVIES);
                     File dir = new File(mediaBase == null ? getFilesDir() : mediaBase, "TalkReelAR");
                     if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("Could not create recording folder.");
@@ -1563,7 +1750,7 @@ public class MainActivity extends Activity {
                     }
                     previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
                     previewBuilder.addTarget(cameraInput);
-                    previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, faceDetectMode);
+                    applyCaptureQuality(previewBuilder);
                     cameraDevice.createCaptureSession(Arrays.asList(cameraInput), new CameraCaptureSession.StateCallback() {
                         public void onConfigured(CameraCaptureSession session) {
                             captureSession = session;

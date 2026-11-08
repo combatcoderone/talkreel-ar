@@ -20,7 +20,7 @@ It is not a claim that the app is ready for public distribution.
 
 | Area | Status | Required work before a real release |
 |---|---|---|
-| Recorded AR effects | **Integrated in this branch; device proof pending** | The settings/review flow now uses the GPU compositor for both preview and encoder surfaces. CI compilation and physical-device proof are still required. The compositor uses Camera2 face rectangles and stylized shader overlays; it is not dense landmark tracking or segmentation. |
+| Recorded AR effects | **Integrated; device proof pending** | v0.10.0 rebuilds the compositor: sensor rotation, front-camera mirroring and cover-crop are handled in GL, face/eye/mouth points are mapped through the same transform, and tracking is smoothed. CI compilation, shader validation and the coordinate round-trip test pass; physical-device proof is still required. It uses Camera2 face detection with eye and mouth points, not dense landmark tracking or segmentation. |
 | Media export integration | **Build validation pending** | The Media3 path is wired here, but the new Gradle CI job must pass. Test music looping, audio gain, source audio preservation, caption timing, orientation, pause/resume and export failure on physical devices. |
 | Camera and recording | **Device validation pending** | Test front/rear cameras, permission denial/recovery, camera contention with social apps, app background/foreground, rotation, repeated record cycles, pause/resume and low-storage handling on supported Android versions. |
 | Audio quality and synchronization | **Device validation pending** | Listen to exported files on device; verify microphone/music balance, clipping, silence, A/V sync, Bluetooth routing, interruptions and long clips. |

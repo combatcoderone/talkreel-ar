@@ -2,7 +2,7 @@
 
 Talk, record, and post. AR teleprompter app for Reels, Shorts, and TikTok.
 
-Version: 0.9.3 (integration candidate; see docs/PRODUCT-READINESS.md)
+Version: 0.10.0 (camera direction and face AR rebuild; see docs/PRODUCT-READINESS.md)
 Package: com.talkreel.ar
 Repo: combatcoderone/talkreel-ar
 Min SDK: 26 (Android 8.0), Target SDK: 36 (Android 16)
@@ -139,11 +139,14 @@ Media3 export stage. Export failure leaves the original recording intact.
 
 ### Framing, Pro, and Script Coach
 
-- The integration branch includes GPU-rendered AR effects (Glow, Glasses,
-  Bunny, Crown, Neon, Beauty, Makeup, Mask, Cat, Dog) composited into both
-  Studio preview and the recorded video. These are stylized face-rectangle
-  shaders, not dense landmark tracking or segmentation. Device validation
-  remains a release gate. See docs/PRODUCT-READINESS.md.
+- GPU-rendered AR effects (Glow, Glasses, Bunny, Crown, Neon, Beauty,
+  Makeup, Mask, Cat, Dog) are composited into both the Studio preview and the
+  recorded video. v0.10.0 rebuilds the pipeline: correct camera rotation,
+  front-camera mirroring and cover-crop, eye/mouth head tracking smoothed
+  across frames, and antialiased shader art. This is still Camera2 face
+  detection with eye and mouth points, not a dense 3D landmark mesh or
+  segmentation. Device validation remains a release gate.
+  See docs/PRODUCT-READINESS.md.
 - Text colour and Caption colour buttons, cycling White, Yellow, Green,
   Cyan, Orange, Pink, saved in settings.
 - Face mode: Front camera (Face: On) or rear camera (Face: Off) for
@@ -164,7 +167,7 @@ browser. If the app is not installed, the app says which one is missing.
 
 ## Remaining product gaps
 
-- Recorded AR effects are still preview-only on the settings/review branch. The GPU compositor work in PR #7 must be integrated before claiming effects are embedded in saved video.
+- AR effects are embedded in saved video through the GPU compositor. Tracking quality depends on the device's Camera2 face detector; dense landmark tracking and segmentation are not in this build.
 - Media3 music/caption export is implemented in the integration branch, but its new Gradle CI job and physical-device audio/export tests must pass before release.
 - Pro payment is not wired; the local Pro toggle is only for testing.
 - Permanent signing, privacy/legal review, music-rights review, Android instrumentation tests and physical-device QA remain release blockers.
@@ -237,7 +240,7 @@ aapt2 dump badging app-debug.apk
 apksigner verify --verbose app-debug.apk
 ```
 
-Expect package com.talkreel.ar, versionCode 14, versionName 0.9.3, minSdk 26,
+Expect package com.talkreel.ar, versionCode 15, versionName 0.10.0, minSdk 26,
 targetSdk 36, v2 and v3 enabled, 1 signer.
 
 Media3-enabled build (required for digital music mixing and burned-in SRT captions):
@@ -286,3 +289,30 @@ is wired in v0.7.0.
 - Existing recording, captions, teleprompter, music, overlay, clips, and sharing paths are retained.
 
 **Integration candidate:** this branch now routes Camera2 frames through an OpenGL ES compositor and renders the selected shader effect to both the Studio preview and MediaRecorder encoder surface. The compositor uses device-provided face rectangles and stylized overlays, not dense facial landmarks or segmentation. CI compilation and physical-device verification are still required; do not treat this as a released, device-validated feature yet.
+## v0.10.0 — camera direction and face AR rebuild
+
+- Camera direction fixed. Every frame is rotated from sensor orientation to
+  upright for the current display, and the front camera is mirrored, inside the
+  GPU compositor, for both the preview and the recorded MP4. Before this, the
+  buffer was drawn sideways and the selfie view was not mirrored.
+- Preview aspect fixed. The preview is a real 9:16 box and the camera image is
+  cover-cropped in GL, so the preview, the AR overlay and the exported video
+  share one composition. The old fixed 520 px box squashed the image.
+- Face alignment fixed. Face, eye and mouth points are mapped from the sensor
+  active array through the same rotation, mirror and crop as the video, so
+  effects sit on the face instead of drifting off it. Capture uses a
+  sensor-aspect size so those coordinates stay valid.
+- Tracking upgrade: eye and mouth points give head roll and accurate eye
+  placement, and positions are smoothed with a short hold so effects stay
+  steady when the detector drops a frame.
+- Effect upgrade: soft bloom, skin-masked beauty smoothing, gradient glasses
+  with lens highlights, gold crown with jewels, animated neon rim,
+  blush/lip/liner makeup, glitter masquerade mask, and cat/dog with ears,
+  whiskers and muzzles. Edges are antialiased in display pixel space, so they
+  are crisp at 720p and 1080p.
+- Capture and export quality: explicit video bitrate, plus autofocus,
+  stabilisation and a 30 fps target requested when the device supports them.
+- Probable-bug fixes found in the review: overlay-only foreground service no
+  longer passes a zero foreground type on Android 10 to 13, edge-to-edge
+  insets are handled on Android 11 to 14, and a failed camera open no longer
+  leaves Record stuck waiting for the camera.
