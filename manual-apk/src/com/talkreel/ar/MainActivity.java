@@ -1395,7 +1395,7 @@ public class MainActivity extends Activity {
                             for (android.util.Size size : outputs) {
                                 int sw = size.getWidth(), sh = size.getHeight();
                                 if (sw <= 0 || sh <= 0 || sw > 1920 || sh > 1920) continue;
-                                float ratio = Math.max(sw, sh) / (float) Math.min(sw, sh);
+                                float ratio = sw / (float) sh;
                                 double ratioError = Math.abs(ratio - targetRatio);
                                 double areaPenalty = 1.0 - Math.min(1.0, (sw * (double) sh) / (1280d * 720d));
                                 double score = ratioError * 100.0 + areaPenalty;
