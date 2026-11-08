@@ -1310,10 +1310,26 @@ public class MainActivity extends Activity {
                         rects.add(mapped);
                     }
                     frameView.setFaces(rects);
-                    if (arCompositor != null && !rects.isEmpty()) {
-                        Rect face = rects.get(0);
-                        arCompositor.setFaceRect(face.left / (float) vw, face.top / (float) vh,
-                                face.right / (float) vw, face.bottom / (float) vh, isFrontCamera);
+                    if (arCompositor != null && faces.length > 0 && activeArray != null
+                            && activeArray.width() > 0 && activeArray.height() > 0) {
+                        // Normalize against the sensor active array, not the
+                        // letterboxed TextureView. This keeps encoded effect
+                        // geometry independent of preview widget dimensions.
+                        Rect sensorFace = faces[0].getBounds();
+                        float left = (sensorFace.left - activeArray.left) / (float) activeArray.width();
+                        float top = (sensorFace.top - activeArray.top) / (float) activeArray.height();
+                        float right = (sensorFace.right - activeArray.left) / (float) activeArray.width();
+                        float bottom = (sensorFace.bottom - activeArray.top) / (float) activeArray.height();
+                        if (isFrontCamera) {
+                            float mirroredLeft = 1f - right;
+                            right = 1f - left;
+                            left = mirroredLeft;
+                        }
+                        left = Math.max(0f, Math.min(1f, left));
+                        top = Math.max(0f, Math.min(1f, top));
+                        right = Math.max(0f, Math.min(1f, right));
+                        bottom = Math.max(0f, Math.min(1f, bottom));
+                        arCompositor.setFaceRect(left, top, right, bottom, isFrontCamera);
                     }
                     return;
                 }
@@ -1451,6 +1467,7 @@ public class MainActivity extends Activity {
             if (arCompositor == null) arCompositor = new ArCompositor(cameraHandler);
             Surface cameraSurface = arCompositor.start(texture, 720, 1280);
             arCompositor.setFilter(AppState.arFilter);
+            arCompositor.setFrameShape(frameView == null ? selfieFrameShape : frameView.getFrameShape());
             if (captureSession != null) {
                 try { captureSession.close(); } catch (Exception ignored) {}
                 captureSession = null;
