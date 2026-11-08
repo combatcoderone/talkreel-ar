@@ -47,6 +47,8 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     private volatile int frameShape;
     private long lastEglLogAt;
     private String lastEglLogKey = "";
+    private final java.nio.FloatBuffer guideBuffer = java.nio.ByteBuffer.allocateDirect(128*4)
+            .order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
     private int overlayProgram, overlayPositionLoc, overlayColorLoc;
     private java.nio.FloatBuffer overlayBuffer;
     private volatile FaceTrackingEngine.FaceFrame faceFrame;
@@ -535,40 +537,29 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     }
 
     /** Recreate display-only framing guides in GL for the encoded MP4. */
+    private static final float[] GUIDE_GRID={-1f,-1f/3f,1f,-1f/3f,-1f,1f/3f,1f,1f/3f,-1f/3f,-1f,-1f/3f,1f,1f/3f,-1f,1f/3f,1f};
+    private static final float[] GUIDE_RECT={-0.66f,-0.52f,0.66f,-0.52f,0.66f,-0.52f,0.66f,0.80f,0.66f,0.80f,-0.66f,0.80f,-0.66f,0.80f,-0.66f,-0.52f};
+    private static final float[] GUIDE_OVAL=buildOvalGuide();
+    private static final float[] GUIDE_HEART=buildHeartGuide();
+    private static float[] buildOvalGuide(){float[] v=new float[128];for(int i=0;i<64;i++){double a=(Math.PI*2.0*i)/64.0;v[i*2]=(float)(Math.cos(a)*0.66);v[i*2+1]=(float)(0.14+Math.sin(a)*0.66);}return v;}
+    private static float[] buildHeartGuide(){float[] v=new float[128];for(int i=0;i<64;i++){double t=(Math.PI*2.0*i)/64.0;double x=16*Math.pow(Math.sin(t),3)/16.0;double y=(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t))/16.0;v[i*2]=(float)(x*0.66);v[i*2+1]=(float)(0.14+y*0.66);}return v;}
     private void drawEncodedGuides() {
-        if (guideProgram == 0) return;
+        if(guideProgram==0)return;
         GLES20.glUseProgram(guideProgram);
         GLES20.glEnable(GLES20.GL_BLEND);
         GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA);
-        if (AppState.showFrame) {
-            drawGuideLine(-1f,-1f/3f,1f,-1f/3f,0.25f);
-            drawGuideLine(-1f,1f/3f,1f,1f/3f,0.25f);
-            drawGuideLine(-1f/3f,-1f,-1f/3f,1f,0.25f);
-            drawGuideLine(1f/3f,-1f,1f/3f,1f,0.25f);
-        }
-        if (frameShape==1 || frameShape==3) {
-            float[] oval=new float[128];
-            for(int i=0;i<64;i++){ double a=(Math.PI*2.0*i)/64.0; oval[i*2]=(float)(Math.cos(a)*0.66); oval[i*2+1]=(float)(0.14+Math.sin(a)*0.66); }
-            drawGuideVertices(oval,64,0.57f);
-        } else if (frameShape==2) {
-            float[] heart=new float[128];
-            for(int i=0;i<64;i++){ double t=(Math.PI*2.0*i)/64.0; double x=16*Math.pow(Math.sin(t),3)/16.0; double y=(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t))/16.0; heart[i*2]=(float)(x*0.66); heart[i*2+1]=(float)(0.14+y*0.66); }
-            drawGuideVertices(heart,64,0.57f);
-        } else {
-            float[] rect={-0.66f,-0.52f,0.66f,-0.52f,0.66f,-0.52f,0.66f,0.80f,0.66f,0.80f,-0.66f,0.80f,-0.66f,0.80f,-0.66f,-0.52f};
-            drawGuideVertices(rect,8,0.57f);
-        }
+        if(AppState.showFrame)drawGuideVertices(GUIDE_GRID,8,GLES20.GL_LINES,0.25f);
+        if(frameShape==1||frameShape==3)drawGuideVertices(GUIDE_OVAL,64,GLES20.GL_LINE_LOOP,0.57f);
+        else if(frameShape==2)drawGuideVertices(GUIDE_HEART,64,GLES20.GL_LINE_LOOP,0.57f);
+        else drawGuideVertices(GUIDE_RECT,8,GLES20.GL_LINE_LOOP,0.57f);
         GLES20.glDisable(GLES20.GL_BLEND);
     }
-    private void drawGuideLine(float x1,float y1,float x2,float y2,float alpha) { drawGuideVertices(new float[]{x1,y1,x2,y2},2,alpha); }
-    private void drawGuideVertices(float[] values,int count,float alpha) {
-        java.nio.FloatBuffer buffer=java.nio.ByteBuffer.allocateDirect(values.length*4).order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
-        buffer.put(values).position(0);
+    private void drawGuideVertices(float[] values,int count,int mode,float alpha) {
+        guideBuffer.clear();guideBuffer.put(values,0,values.length);guideBuffer.flip();
         GLES20.glUniform4f(guideColorLoc,1f,1f,1f,alpha);
         GLES20.glEnableVertexAttribArray(guidePositionLoc);
-        GLES20.glVertexAttribPointer(guidePositionLoc,2,GLES20.GL_FLOAT,false,0,buffer);
-        GLES20.glLineWidth(2f);
-        GLES20.glDrawArrays(count==2?GLES20.GL_LINES:GLES20.GL_LINE_LOOP,0,count);
+        GLES20.glVertexAttribPointer(guidePositionLoc,2,GLES20.GL_FLOAT,false,0,guideBuffer);
+        GLES20.glLineWidth(2f);GLES20.glDrawArrays(mode,0,count);
         GLES20.glDisableVertexAttribArray(guidePositionLoc);
     }
     private void logEglFailure(String operation,String detail) {
