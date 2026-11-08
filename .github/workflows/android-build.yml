@@ -41,7 +41,7 @@ jobs:
       - name: Build and verify APK with MediaPipe and Media3
         working-directory: manual-apk
         run: |
-          gradle --no-daemon assembleDebug
+          gradle --no-daemon testDebugUnitTest assembleDebug
           APK=$(find build/outputs/apk/debug -maxdepth 1 -name "*.apk" -print -quit)
           test -n "$APK"
           cp "$APK" app-debug.apk
@@ -75,8 +75,8 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Compile Media3-enabled Android app
-        run: gradle -p manual-apk --no-daemon assembleDebug
+      - name: Run JVM tests and compile Media3-enabled Android app
+        run: gradle -p manual-apk --no-daemon testDebugUnitTest assembleDebug
       - name: Upload Media3-enabled APK
         uses: actions/upload-artifact@v4
         with:
