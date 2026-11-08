@@ -103,7 +103,7 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     }
 
     void setFilter(int value) { filter=Math.max(0,Math.min(5,value)); }
-    void setEffect(int value) { effect=Math.max(0,Math.min(19,value)); }
+    void setEffect(int value) { effect=Math.max(0,Math.min(29,value)); }
     void setFaceFrame(FaceTrackingEngine.FaceFrame frame, boolean mirrored) { faceFrame=frame; mirrorFace=mirrored; }
     void clearFaceFrame() { faceFrame=null; }
     void setCameraOrientation(int degrees) { setCameraOrientation(degrees, false); }
@@ -250,7 +250,7 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
                 break;
             case 11: // Vampire
                 drawFang(mesh,78,88,0.025f+(expr.length>0?expr[24]*0.035f:0));
-                drawFang(mesh,308,318,0.025f+(expr.length>0?expr[0]*0.035f:0));
+                drawFang(mesh,308,318,0.025f+(expr.length>24?expr[24]*0.035f:0));
                 drawCircle(mesh,1,0x99C20E2D,0.012f);
                 break;
             case 12: // Pumpkin
