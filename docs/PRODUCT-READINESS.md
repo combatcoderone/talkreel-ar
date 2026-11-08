@@ -116,3 +116,4 @@ The AAB is still a release *candidate*, not a release: physical-device acceptanc
 - Face-anchored cheek accents, cat/bunny ears and halo dimensions scale with measured inter-temple distance, reducing screen-fixed sizing as the subject moves.
 - The camera coach/status line reports per-frame inference time in milliseconds to make tracking latency measurable during device QA.
 - These changes improve stability and diagnostics. They do not add rigged 3D assets, face segmentation, depth occlusion or physical-device certification.
+- Selected looks now use smile and blink blendshape scores for subtle cheek and eyelid accents; jaw-open scores continue to drive Halloween fang/teeth length.
