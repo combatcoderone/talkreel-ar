@@ -5,7 +5,7 @@ It is not a claim that the app is ready for public distribution.
 
 ## Completed in this branch
 
-- Added a Gradle Android build alongside the existing dependency-free manual build.
+- Standardized the Android build on Gradle because the real-time face detector and Media3 now require external Android dependencies.
 - Added Media3 Transformer export to the Gradle build.
 - Routed the selected, downloaded music track into the final MP4 as a separate audio sequence under the microphone recording. Music is mixed at a conservative 20% gain and loops to the clip duration.
 - Removed speaker playback of the selected music during TalkReel-owned recording. This avoids recording the music twice (once acoustically through the microphone and once as the digital music track).
@@ -14,13 +14,13 @@ It is not a claim that the app is ready for public distribution.
 - Added a CI job that compiles the Media3-enabled Android source and uploads a debug APK artifact.
 - Targeted Android 16 / API 36 in both build paths and added edge-to-edge system-bar insets for Android 15+.
 - Separated overlay and recording foreground-service modes: the user-requested overlay uses the declared special-use type, while camera/microphone types are activated only for recording.
-- Kept the standalone manual APK build working without Media3 dependencies. That fallback build does not provide digital music mixing or burned-in captions; use the Gradle build for those features.
+- Added bundled ML Kit face contour detection to the Camera2 YUV analysis stream. The bundled model avoids a first-use model download.
 
 ## Release blockers — not complete
 
 | Area | Status | Required work before a real release |
 |---|---|---|
-| Recorded AR effects | **Integrated in this branch; device proof pending** | The settings/review flow uses the GPU compositor for preview and encoder surfaces. A corrective branch now applies sensor/display rotation in the compositor; physical-device proof is still required. CI compilation and physical-device proof are still required. The initial novelty face overlays have been removed. The current compositor provides restrained color looks, not face-tracked AR; accurate landmarks/segmentation are not implemented. |
+| Face tracking and effects | **Partially implemented; not release-ready** | ML Kit contour mode analyzes a Camera2 YUV stream and returns facial contours for eyes, lips and face shape. The preview renderer now has 20 contour-driven makeup/Halloween looks. Contour mode targets the most prominent face. These effects currently render in the live preview only; they are not yet composited into recorded/exported video. No 3D mesh, depth occlusion, expression blendshapes, multi-face effects or segmentation-based foundation is implemented. Device QA and encoder integration remain mandatory. |
 | Media export integration | **Build validation pending** | The Media3 path is wired here, but the new Gradle CI job must pass. Test music looping, audio gain, source audio preservation, caption timing, orientation, pause/resume and export failure on physical devices. |
 | Camera and recording | **Device validation pending** | Test front/rear cameras, permission denial/recovery, camera contention with social apps, app background/foreground, rotation, repeated record cycles, pause/resume and low-storage handling on supported Android versions. |
 | Audio quality and synchronization | **Device validation pending** | Listen to exported files on device; verify microphone/music balance, clipping, silence, A/V sync, Bluetooth routing, interruptions and long clips. |
@@ -37,7 +37,7 @@ It is not a claim that the app is ready for public distribution.
 
 - The Media3 export path is an offline post-recording transformation. It does not mix the audio live while recording.
 - The selected music file must be downloaded before recording. A missing file prevents recording when music is enabled rather than silently recording an empty music track.
-- The standalone `manual-apk/build.sh` intentionally excludes `Media3ExportPipeline.java`; it remains a dependency-free fallback and does not offer digital music mix/caption burn-in. The AR compositor is included in both build paths.
+- `manual-apk/build.sh` now delegates to Gradle. The previous dependency-free javac/d8 path is no longer supported because ML Kit and Media3 dependencies are required.
 - The floating overlay cannot take ownership of another app's camera or control its recording session. Its foreground service uses the Android `specialUse` type only while the user-requested overlay is visible; recording uses camera/microphone types.
 - The existing Pro flag is a local testing switch, not a purchase entitlement.
 - No physical-device validation is represented by a successful GitHub Actions build.
@@ -46,7 +46,7 @@ It is not a claim that the app is ready for public distribution.
 
 Do not label this app production-ready until all of the following are true:
 
-1. The AR compositor and settings/review workflow compile together, and physical-device tests prove selected effects appear in the saved MP4.
+1. The face-contour renderer is integrated into the shared camera/encoder render path, and physical-device tests prove all selected effects appear in the saved MP4. The current branch only renders contour effects in the live preview.
 2. The Media3 build passes CI and the resulting MP4 is inspected on physical devices.
 3. The device test matrix covers at least one current Pixel-class device and one Samsung device, plus the oldest Android API level the product supports.
 4. Billing, permanent signing, privacy/legal review and music-rights review are complete.
@@ -78,3 +78,14 @@ The AAB is still a release *candidate*, not a release: physical-device acceptanc
 - Removed novelty face-sticker effects (bunny ears, crowns, cartoon masks, etc.). The selector now offers restrained color looks: Natural, Warm, Cool, Cinematic, Soft and Monochrome.
 - Removed the face rectangle overlay from the preview. The face detector currently provides framing feedback only; this is not landmark-based AR.
 - These code changes require successful CI and physical-device validation across front/rear cameras and saved-video playback before they can be called fixed.
+
+
+## Face tracking and creator UI milestone (v0.9.5 candidate)
+
+- Added bundled ML Kit face detection with contour mode to the Camera2 YUV analysis stream. Frames are throttled: only one inference is processed at a time and stale frames are dropped.
+- Uses eye, lip and face contours plus cheek landmarks to anchor preview makeup. The collection contains 20 named looks: Natural Makeup, Soft Glam, Smoky Eye, Rose Gold, Bronze Glow, Editorial Red, Nude Gloss, Berry Lip, Copper Shine, Bridal Glow, Halloween Skull, Vampire, Pumpkin, Zombie, Witch, Ghost, Demon, Spider Queen, Porcelain Doll and Neon Phantom.
+- The Halloween set uses contour-anchored 2D makeup accents. It is not a library of 3D animated lenses, and should not be described as Snapchat-equivalent.
+- The overlay was redesigned as a narrower, opaque, collapsible teleprompter panel with a dedicated drag handle and simplified controls.
+- The ML Kit contours are currently preview-only. The encoder still receives the GPU camera compositor and basic color grade; the contour makeup is not burned into the saved recording. This is a hard release blocker for a camera-effects product.
+- ML Kit contour mode provides detailed contours for the prominent face, not MediaPipe's 478-point 3D face mesh or 52 expression blendshapes. Those capabilities remain future work.
+- The manual build script now invokes Gradle. A dependency-free javac build is not compatible with the bundled ML Kit dependency.
