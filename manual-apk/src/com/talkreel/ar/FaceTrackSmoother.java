@@ -59,7 +59,6 @@ final class FaceTrackSmoother {
         if (smoothed == null || timestampNs - lastSeenNs > COAST_NS * 2) {
             smoothed = new RectF(measured);
             vx = vy = vw = vh = 0f;
-        smoothLeftEye = smoothRightEye = smoothMouth = null;
             smoothLeftEye = leftEye; smoothRightEye = rightEye; smoothMouth = mouth;
         } else {
             float cx = measured.centerX(), cy = measured.centerY();
@@ -135,6 +134,7 @@ final class FaceTrackSmoother {
         faceId = -1;
         lastSeenNs = lastUpdateNs = 0;
         vx = vy = vw = vh = 0f;
+        smoothLeftEye = smoothRightEye = smoothMouth = null;
     }
 
     private static PointF smoothPoint(PointF oldPoint, PointF next, float alpha) {
