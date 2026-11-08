@@ -17,6 +17,7 @@ import com.google.mediapipe.tasks.vision.facelandmarker.FaceLandmarker;
 import com.google.mediapipe.tasks.vision.facelandmarker.FaceLandmarkerResult;
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Asynchronous on-device 3D face mesh and expression tracker. */
@@ -26,8 +27,9 @@ public final class FaceTrackingEngine implements AutoCloseable {
     public static final class FaceFrame {
         public final float[][] landmarks;
         public final float[][] blendshapes;
+        public final float[][] poseMatrices;
         public final long timestampMs;
-        FaceFrame(float[][] p,float[][] b,long t){landmarks=p;blendshapes=b;timestampMs=t;}
+        FaceFrame(float[][] p,float[][] b,float[][] matrices,long t){landmarks=p;blendshapes=b;poseMatrices=matrices;timestampMs=t;}
         public int faceCount(){return landmarks.length;}
     }
     public interface Listener {
@@ -92,6 +94,9 @@ public final class FaceTrackingEngine implements AutoCloseable {
             int count=Math.min(3,all.size());
             float[][] meshes=new float[count][LANDMARK_COUNT*3];
             float[][] expressions=new float[count][BLENDSHAPE_COUNT];
+            float[][] poses=new float[count][16];
+            Optional<List<List<Category>>> blendResult=result.faceBlendshapes();
+            Optional<List<float[]>> matrixResult=result.facialTransformationMatrixes();
             for(int f=0;f<count;f++){
                 List<NormalizedLandmark> points=all.get(f);
                 float[] mesh=meshes[f];
@@ -99,18 +104,22 @@ public final class FaceTrackingEngine implements AutoCloseable {
                     NormalizedLandmark p=points.get(i);
                     mesh[i*3]=p.x();mesh[i*3+1]=p.y();mesh[i*3+2]=p.z();
                 }
-                if(f<result.faceBlendshapes().size()){
-                    for(Category category:result.faceBlendshapes().get(f).categories()){
+                if(blendResult.isPresent() && f<blendResult.get().size()){
+                    for(Category category:blendResult.get().get(f)){
                         int index=blendIndex(category.categoryName());
                         if(index>=0)expressions[f][index]=category.score();
                     }
+                }
+                if(matrixResult.isPresent() && f<matrixResult.get().size()) {
+                    float[] matrix=matrixResult.get().get(f);
+                    if(matrix!=null)System.arraycopy(matrix,0,poses[f],0,Math.min(16,matrix.length));
                 }
                 if(previous[f]!=null&&previous[f].length==mesh.length)
                     for(int i=0;i<mesh.length;i++)mesh[i]=previous[f][i]*0.35f+mesh[i]*0.65f;
                 previous[f]=mesh.clone();
             }
             for(int i=count;i<previous.length;i++)previous[i]=null;
-            if(!closed&&listener!=null)listener.onFaces(new FaceFrame(meshes,expressions,timestamp),
+            if(!closed&&listener!=null)listener.onFaces(new FaceFrame(meshes,expressions,poses,timestamp),
                 rotated.getWidth(),rotated.getHeight());
         } catch(Exception e) {
             if(!closed&&listener!=null)listener.onError("Face tracking frame failed: "+e.getMessage());
