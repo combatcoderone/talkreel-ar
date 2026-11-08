@@ -1,4 +1,5 @@
 name: Android APK build
+# Gradle is required for bundled MediaPipe 3D face landmarks and Media3 dependencies.
 
 on:
   push:
@@ -8,6 +9,7 @@ on:
       - integration/product-readiness-media-export
       - feature/presenter-control-ui-v0.8
       - feature/snapchat-style-ar-v0.9
+      - feature/complete-ar-rendering-and-3d-face-tracking
   pull_request:
     branches:
       - main
@@ -19,7 +21,7 @@ on:
 jobs:
   assemble:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -32,28 +34,24 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           packages: platform-tools platforms;android-36 build-tools;36.0.0
-      - name: Prepare temporary CI signing key
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Build and verify APK with MediaPipe and Media3
         working-directory: manual-apk
         run: |
-          keytool -genkeypair -noprompt -v \
-            -keystore release.keystore \
-            -storepass android -keypass android \
-            -alias talkreel-ci \
-            -dname "CN=TalkReel CI, OU=Build, O=TalkReel, L=Montreal, ST=Quebec, C=CA" \
-            -keyalg RSA -keysize 2048 -validity 10000
-      - name: Build and verify APK
-        working-directory: manual-apk
-        env:
-          TALKREEL_KEYSTORE_PASS: android
-        run: |
-          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
-          bash build.sh
-          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging app-debug.apk
+          gradle --no-daemon testDebugUnitTest assembleDebug
+          APK=$(find build/outputs/apk/debug -maxdepth 1 -name "*.apk" -print -quit)
+          test -n "$APK"
+          cp "$APK" app-debug.apk
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --verbose app-debug.apk
-      - name: Upload APK artifact
+          unzip -l app-debug.apk | grep 'assets/face_landmarker.task'
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging app-debug.apk
+      - name: Upload tester APK
         uses: actions/upload-artifact@v4
         with:
-          name: talkreel-ar-v0.9.3-apk
+          name: talkreel-ar-v0.9.6-ar-renderer-apk
           path: manual-apk/app-debug.apk
           if-no-files-found: error
           retention-days: 30
@@ -77,12 +75,12 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Compile Media3-enabled Android app
-        run: gradle -p manual-apk --no-daemon assembleDebug
+      - name: Run JVM tests and compile Media3-enabled Android app
+        run: gradle -p manual-apk --no-daemon testDebugUnitTest assembleDebug
       - name: Upload Media3-enabled APK
         uses: actions/upload-artifact@v4
         with:
-          name: talkreel-ar-media3-debug-apk
+          name: talkreel-ar-v0.9.6-media3-debug-apk
           path: manual-apk/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
