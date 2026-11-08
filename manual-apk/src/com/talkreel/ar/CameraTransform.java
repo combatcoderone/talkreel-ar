@@ -2,6 +2,8 @@ package com.talkreel.ar;
 
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.Point;
+import android.graphics.PointF;
 
 /**
  * Maps Camera2 face-statistics coordinates into the camera stream's normalized
@@ -34,6 +36,17 @@ final class CameraTransform {
         }
         if (right <= left || bottom <= top) return null;
         return new RectF(left, top, right, bottom);
+    }
+
+    static PointF mapSensorPoint(Point point, Rect activeArray, Rect cropRegion, boolean mirrorX) {
+        if (point == null || activeArray == null || activeArray.isEmpty()) return null;
+        Rect crop = cropRegion == null ? new Rect(activeArray) : new Rect(cropRegion);
+        if (crop.isEmpty()) crop.set(activeArray);
+        if (!crop.intersect(activeArray)) return null;
+        float x = clamp((point.x - crop.left) / (float) crop.width(), 0f, 1f);
+        float y = clamp((point.y - crop.top) / (float) crop.height(), 0f, 1f);
+        if (mirrorX) x = 1f - x;
+        return new PointF(x, y);
     }
 
     static float clamp(float value, float min, float max) {
