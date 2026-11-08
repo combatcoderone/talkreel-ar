@@ -1,11 +1,11 @@
 # Product readiness audit — 2026-11-07
 
-This audit describes the integration branch `integration/product-readiness-media-export`.
+This audit describes the MVP and subsequent corrective work on camera orientation and visual treatment.
 It is not a claim that the app is ready for public distribution.
 
 ## Completed in this branch
 
-- Added a Gradle Android build alongside the existing dependency-free manual build.
+- Standardized the Android build on Gradle because the real-time face detector and Media3 now require external Android dependencies.
 - Added Media3 Transformer export to the Gradle build.
 - Routed the selected, downloaded music track into the final MP4 as a separate audio sequence under the microphone recording. Music is mixed at a conservative 20% gain and loops to the clip duration.
 - Removed speaker playback of the selected music during TalkReel-owned recording. This avoids recording the music twice (once acoustically through the microphone and once as the digital music track).
@@ -14,13 +14,13 @@ It is not a claim that the app is ready for public distribution.
 - Added a CI job that compiles the Media3-enabled Android source and uploads a debug APK artifact.
 - Targeted Android 16 / API 36 in both build paths and added edge-to-edge system-bar insets for Android 15+.
 - Separated overlay and recording foreground-service modes: the user-requested overlay uses the declared special-use type, while camera/microphone types are activated only for recording.
-- Kept the standalone manual APK build working without Media3 dependencies. That fallback build does not provide digital music mixing or burned-in captions; use the Gradle build for those features.
+- Replaced ML Kit face rectangles/contours with MediaPipe Face Landmarker: 478 3D landmarks, 52 ARKit blendshape coefficients, 4x4 facial pose matrices and up to three simultaneous faces. The model is downloaded during the Gradle build and packaged in the APK for offline inference.
 
 ## Release blockers — not complete
 
 | Area | Status | Required work before a real release |
 |---|---|---|
-| Recorded AR effects | **Integrated in this branch; device proof pending** | The settings/review flow now uses the GPU compositor for both preview and encoder surfaces. CI compilation and physical-device proof are still required. The compositor uses Camera2 face rectangles and stylized shader overlays; it is not dense landmark tracking or segmentation. |
+| Face tracking and effects | **Implemented foundation; advanced rendering and device QA remain** | MediaPipe Face Landmarker analyzes the Camera2 YUV stream off the camera/GL thread, returning 478 xyz landmarks, 52 blendshape scores and pose matrices for up to three faces. A smoothed result feeds the shared EGL renderer. Thirty face-anchored looks (makeup, Halloween, glasses, crown, jewelry and accessories) are rendered to both preview and encoder surfaces, so the live effect is recorded in the MP4. This is not yet a full commercial lens engine: true face-part segmentation, depth-based occlusion, rigged 3D assets and production-quality physically based makeup are still outstanding. Test orientation, thermal load, FPS, latency and exported output on physical devices. |
 | Media export integration | **Build validation pending** | The Media3 path is wired here, but the new Gradle CI job must pass. Test music looping, audio gain, source audio preservation, caption timing, orientation, pause/resume and export failure on physical devices. |
 | Camera and recording | **Device validation pending** | Test front/rear cameras, permission denial/recovery, camera contention with social apps, app background/foreground, rotation, repeated record cycles, pause/resume and low-storage handling on supported Android versions. |
 | Audio quality and synchronization | **Device validation pending** | Listen to exported files on device; verify microphone/music balance, clipping, silence, A/V sync, Bluetooth routing, interruptions and long clips. |
@@ -37,7 +37,7 @@ It is not a claim that the app is ready for public distribution.
 
 - The Media3 export path is an offline post-recording transformation. It does not mix the audio live while recording.
 - The selected music file must be downloaded before recording. A missing file prevents recording when music is enabled rather than silently recording an empty music track.
-- The standalone `manual-apk/build.sh` intentionally excludes `Media3ExportPipeline.java`; it remains a dependency-free fallback and does not offer digital music mix/caption burn-in. The AR compositor is included in both build paths.
+- `manual-apk/build.sh` now delegates to Gradle. The previous dependency-free javac/d8 path is no longer supported because ML Kit and Media3 dependencies are required.
 - The floating overlay cannot take ownership of another app's camera or control its recording session. Its foreground service uses the Android `specialUse` type only while the user-requested overlay is visible; recording uses camera/microphone types.
 - The existing Pro flag is a local testing switch, not a purchase entitlement.
 - No physical-device validation is represented by a successful GitHub Actions build.
@@ -46,7 +46,7 @@ It is not a claim that the app is ready for public distribution.
 
 Do not label this app production-ready until all of the following are true:
 
-1. The AR compositor and settings/review workflow compile together, and physical-device tests prove selected effects appear in the saved MP4.
+1. The MediaPipe landmark-driven renderer is integrated into the shared camera/encoder EGL path, and physical-device tests prove that effects remain aligned and appear in the saved MP4 across front/rear cameras, head motion and recording lifecycle. CI compilation alone does not satisfy this gate.
 2. The Media3 build passes CI and the resulting MP4 is inspected on physical devices.
 3. The device test matrix covers at least one current Pixel-class device and one Samsung device, plus the oldest Android API level the product supports.
 4. Billing, permanent signing, privacy/legal review and music-rights review are complete.
@@ -70,3 +70,89 @@ Before running it, the repository owner must create these GitHub Actions secrets
 Do not use the temporary CI key generated by `.github/workflows/android-build.yml`. Do not commit the keystore or passwords. The owner must verify the upload key fingerprint and keep an offline backup before creating these secrets. The manual workflow requires an explicit boolean confirmation and only uploads the resulting AAB as a short-lived GitHub Actions artifact. It deliberately has no Play publishing credentials or deployment step.
 
 The AAB is still a release *candidate*, not a release: physical-device acceptance, privacy and music-rights sign-off, Play Console declarations, store listing, billing decision/implementation and staged rollout approval remain required. The current app version is an integration candidate; increment versionCode and set the approved release version before the first store submission.
+
+
+## Corrective work after tester feedback
+
+- Treat upside-down or incorrectly rotated camera output as a release-blocking defect. The corrective branch `fix/camera-orientation-and-premium-look` calculates orientation from Camera2 sensor orientation, lens facing and display rotation, then applies the transform in the shared GPU path used by preview and recording.
+- Removed novelty face-sticker effects (bunny ears, crowns, cartoon masks, etc.). The selector now offers restrained color looks: Natural, Warm, Cool, Cinematic, Soft and Monochrome.
+- Removed the face rectangle overlay from the preview. The face detector currently provides framing feedback only; this is not landmark-based AR.
+- These code changes require successful CI and physical-device validation across front/rear cameras and saved-video playback before they can be called fixed.
+
+
+## Face tracking and creator UI milestone (v0.9.5 candidate)
+
+- Added bundled ML Kit face detection with contour mode to the Camera2 YUV analysis stream. Frames are throttled: only one inference is processed at a time and stale frames are dropped.
+- Uses eye, lip and face contours plus cheek landmarks to anchor preview makeup. The collection contains 20 named looks: Natural Makeup, Soft Glam, Smoky Eye, Rose Gold, Bronze Glow, Editorial Red, Nude Gloss, Berry Lip, Copper Shine, Bridal Glow, Halloween Skull, Vampire, Pumpkin, Zombie, Witch, Ghost, Demon, Spider Queen, Porcelain Doll and Neon Phantom.
+- The Halloween set uses contour-anchored 2D makeup accents. It is not a library of 3D animated lenses, and should not be described as Snapchat-equivalent.
+- The overlay was redesigned as a narrower, opaque, collapsible teleprompter panel with a dedicated drag handle and simplified controls.
+- The ML Kit contours are currently preview-only. The encoder still receives the GPU camera compositor and basic color grade; the contour makeup is not burned into the saved recording. This is a hard release blocker for a camera-effects product.
+- ML Kit contour mode provides detailed contours for the prominent face, not MediaPipe's 478-point 3D face mesh or 52 expression blendshapes. Those capabilities remain future work.
+- The manual build script now invokes Gradle. A dependency-free javac build is not compatible with the bundled ML Kit dependency.
+
+
+## Face-tracked AR renderer milestone (v0.9.6 candidate)
+
+- MediaPipe Tasks Vision 1.1.1 is used with Face Landmarker in VIDEO mode. Input frames are converted from Camera2 YUV_420_888 to upright RGB bitmaps on a dedicated worker thread, with stale frames dropped while inference is busy.
+- Up to three faces are tracked. Each result carries 478 xyz landmarks, the full set of 52 ARKit blendshape coefficients and a 4x4 canonical-to-observed pose matrix. Landmark smoothing reduces frame-to-frame jitter.
+- The GPU compositor now renders face-anchored makeup, Halloween and accessory geometry after the camera texture pass. The exact same draw pass is invoked for both preview and encoder EGL surfaces; therefore selected effects are included in the camera recording rather than being UI-only.
+- The 30-look catalog includes ten makeup styles, ten Halloween styles and ten accessory/creative styles.
+- The model is downloaded by a Gradle preBuild task and packaged into the APK, so no first-run model download is required on the device.
+- Current renderer is a 2D overlay renderer driven by 3D face landmarks and expression scores. It is not yet a fully rigged 3D asset pipeline; no dense face-part segmentation or depth/occlusion compositing is implemented. Those remain explicit release blockers for claims of Snapchat-equivalent quality.
+- The MediaPipe frame conversion and 3-face inference path needs physical-device performance validation. Build success alone does not establish stable FPS, thermal behavior, accurate camera rotation/mirroring or effect alignment.
+
+
+## Multi-face tracking stabilization follow-up
+
+- Face detections are now re-associated between frames by nearest face-center matching before temporal smoothing. This avoids blending the previous frame's landmark history into a different person when MediaPipe changes the ordering of up to three simultaneous detections.
+- This is a tracking-stability improvement, not persistent biometric identity tracking. A face that disappears and re-enters the frame receives a new smoothing history.
+- The renderer remains a 2D GPU overlay system. The 3D landmark z-coordinate and pose matrices are retained in the frame payload but are not yet a complete 3D asset/occlusion pipeline.
+
+
+## AR tracking hardening follow-up
+
+- Multi-face temporal smoothing now associates each incoming detection with the nearest prior face center before blending landmark history. This prevents detector result reordering from mixing two people's landmark meshes.
+- The association logic is isolated in a pure-Java helper and has JVM tests for reordered detections, unmatched/new faces and center calculation. Android CI now runs `testDebugUnitTest` before packaging.
+- Face-anchored cheek accents, cat/bunny ears and halo dimensions scale with measured inter-temple distance, reducing screen-fixed sizing as the subject moves.
+- The camera coach/status line reports per-frame inference time in milliseconds to make tracking latency measurable during device QA.
+- These changes improve stability and diagnostics. They do not add rigged 3D assets, face segmentation, depth occlusion or physical-device certification.
+- Selected looks now use smile and blink blendshape scores for subtle cheek and eyelid accents; jaw-open scores continue to drive Halloween fang/teeth length.
+## Commercial face-AR benchmark — November 2026
+
+The closest directly comparable commercial reference used for this engineering audit is Banuba Face AR SDK. This is a capability comparison, not a claim that TalkReel has been benchmarked against Banuba on identical hardware.
+
+| Capability | TalkReel v0.9.6 candidate (PR #19) | Banuba published Face AR SDK |
+|---|---|---|
+| Face representation | MediaPipe: 478 3D landmarks, 52 blendshapes and a 4×4 face transform | Proprietary 3D face model / morph representation |
+| Faces | Up to 3 in the current implementation | Published technical table reports up to 5 |
+| Tracking performance | Not yet measured on physical devices | Published Android table reports about 25 FPS on low-tier and 30 FPS on high-tier for one face |
+| Pose / orientation | Sensor/display rotation is applied; device and preview/encoder combinations still need QA | Vendor markets extreme pose and 360° camera rotation; validate on target devices |
+| Occlusion | No semantic face-part segmentation or depth-tested occlusion | Vendor advertises partial-occlusion support; validate with its demo |
+| Effects | 30 named 2D GPU looks driven by 3D landmarks and blendshapes; shared preview/recording compositor | Commercial Face AR runtime and authoring ecosystem |
+| Lighting | Basic colour looks; no learned face relighting or robust face-region exposure model | Vendor advertises low-light adaptation; validate on target devices |
+| Evidence | CI build and unit tests; physical-device matrix outstanding | Vendor publishes lab performance figures |
+
+Banuba's published figures are lab results, not guarantees. Its marketing claims about pose and occlusion should not be treated as independently verified test results.
+
+- [Banuba technical specification](https://docs.banuba.com/far-sdk/tutorials/capabilities/technical_specification/)
+- [Banuba SDK feature matrix](https://docs.banuba.com/far-sdk/tutorials/capabilities/sdk_features/)
+- [Google MediaPipe Face Landmarker output specification](https://developers.google.com/edge/mediapipe/solutions/vision/face_landmarker)
+
+### Acceptance targets before claiming commercial-grade tracking
+
+1. Measure sustained FPS, p50/p95 inference latency, dropped-frame rate, memory churn and thermal behaviour on at least one low/mid-range and one high-end Android device.
+2. Verify camera/display rotation, front-camera mirroring, aspect-fill crop, preview-to-encoder alignment and saved MP4 parity for every supported orientation.
+3. Test yaw/pitch/roll, face-at-edge, partial occlusion, glasses, rapid motion, backlight, low light and multiple faces crossing.
+4. Add semantic face-part segmentation and depth-aware occlusion before claiming realistic 3D lenses or makeup.
+5. Run the same scripted clips and device matrix against Banuba's trial SDK if a vendor-quality comparison is required. Do not compare TalkReel's unmeasured performance with Banuba's published lab FPS as if they were equivalent.
+
+**Current positioning:** TalkReel has an on-device 3D landmark-driven AR foundation, but it is not yet a Banuba/Snap Camera Kit equivalent. Physical-device validation and 3D occlusion/segmentation remain release gates.
+## Latest pipeline audit — 2026-11-08
+
+- Run `42442399501` passed both APK and Media3 jobs for commit `6787de009876652971d4c11db53cf908180533eb`; the APK job verified that the Face Landmarker model asset was packaged.
+- The subsequent test-enabled run `42443233810` failed in both jobs because `src/test/java` was also compiled as production Java and JUnit was therefore absent from the Android main compile classpath.
+- Commit `429b23cb924c9fe9d37a1da16f508920327b9f33` excludes `**/test/**` from the Android main source set. A fresh successful run for this fix and the later follow-up commits has not been confirmed.
+- The original PR #19 branch diverged from `main`; its implementation has been ported onto `feature/talkreel-mediapipe-mainline`, which is based on the current `main` commit. PR #23 is the current integration review target.
+- No physical-device tests have been performed in this audit. CI does not validate camera orientation, mesh alignment, thermal performance, or recorded-video appearance.
+
+**Release gate:** PR #23 is now based directly on `main`; keep it in draft until its current head passes both CI jobs and the documented Pixel/Samsung device matrix is signed off.

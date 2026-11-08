@@ -21,6 +21,9 @@ import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.media.MediaRecorder;
+import android.media.Image;
+import android.media.ImageReader;
+import android.graphics.ImageFormat;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
@@ -68,6 +71,12 @@ public class MainActivity extends Activity {
     private volatile boolean activityDestroyed = false;
     private volatile boolean activityResumed = false;
     private volatile int faceDetectMode = CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF;
+    private volatile int cameraRotationDegrees = 0;
+    private volatile int cameraBufferWidth = 1280;
+    private volatile int cameraBufferHeight = 720;
+    private volatile int faceInputRotationDegrees = 0;
+    private ImageReader faceImageReader;
+    private FaceTrackingEngine faceTrackingEngine;
     private TextureView textureView;
     private ProFrameView frameView;
     private TextView statusView;
@@ -260,7 +269,7 @@ public class MainActivity extends Activity {
         previewBox.addView(frameView);
         root.addView(previewBox);
         TextView arNote = new TextView(this);
-        arNote.setText("AR effects are composited by the GPU into Studio preview and recorded video. Effects use camera face rectangles, not dense facial landmarks.");
+        arNote.setText("30 face-tracked makeup, Halloween and accessory looks · Applied to live preview and recorded video.");
         arNote.setTextColor(0xFFAAAAAA);
         arNote.setTextSize(11);
         arNote.setPadding(8, 3, 8, 5);
@@ -367,15 +376,15 @@ public class MainActivity extends Activity {
             }
         });
         rowPro.addView(faceButton);
-        final Button arFilterButton = UiStyle.dark(this, "AR effect: " + ProFrameView.filterName(AppState.arFilter));
+        final Button arFilterButton = UiStyle.dark(this, "Look: " + ProFrameView.filterName(AppState.arFilter));
         arFilterButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.arFilter = (AppState.arFilter + 1) % ProFrameView.FILTER_COUNT;
                 frameView.setFilter(AppState.arFilter);
-                if (arCompositor != null) arCompositor.setFilter(AppState.arFilter);
-                arFilterButton.setText("AR effect: " + ProFrameView.filterName(AppState.arFilter));
+                if (arCompositor != null) { arCompositor.setFilter(0); arCompositor.setEffect(AppState.arFilter); }
+                arFilterButton.setText("Look: " + ProFrameView.filterName(AppState.arFilter));
                 savePrefs();
-                statusView.setText("AR effect: " + ProFrameView.filterName(AppState.arFilter) + " · Applied to preview and recording");
+                statusView.setText("Look: " + ProFrameView.filterName(AppState.arFilter) + " · Face-tracked preview overlay");
             }
         });
         rowPro.addView(arFilterButton);
@@ -735,7 +744,7 @@ public class MainActivity extends Activity {
     private void applyCreatorSettings(String script, int size, int ar, int music, int shape, float speed) {
         AppState.script = script; scriptEdit.setText(script); teleprompterView.setText(script);
         teleprompterTextSize = size; teleprompterView.setTextSize(size);
-        AppState.arFilter = ar; frameView.setFilter(ar); if (arCompositor != null) arCompositor.setFilter(ar);
+        AppState.arFilter = ar; frameView.setFilter(ar); if (arCompositor != null) { arCompositor.setFilter(0); arCompositor.setEffect(ar); }
         musicTrackIndex = Math.max(0, Math.min(music, MusicCatalog.TRACKS.length - 1));
         selfieFrameShape = shape; frameView.setFrameShape(shape);
         AppState.speed = speed; savePrefs();
@@ -753,13 +762,13 @@ public class MainActivity extends Activity {
         final Spinner ar = new Spinner(this); String[] effects = new String[ProFrameView.FILTER_COUNT];
         for(int i=0;i<effects.length;i++) effects[i]=ProFrameView.filterName(i);
         ar.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, effects));
-        ar.setSelection(AppState.arFilter); form.addView(settingsLabel("AR / makeup effect")); form.addView(ar);
+        ar.setSelection(AppState.arFilter); form.addView(settingsLabel("Face-tracked makeup & Halloween looks")); form.addView(ar);
         final Spinner music = new Spinner(this); String[] tracks = new String[MusicCatalog.TRACKS.length];
         for(int i=0;i<tracks.length;i++) tracks[i]=MusicCatalog.TRACKS[i].title;
         music.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, tracks));
         music.setSelection(Math.max(0,Math.min(musicTrackIndex,tracks.length-1)));
         form.addView(settingsLabel("Music track")); form.addView(music);
-        final Spinner shape = new Spinner(this); String[] shapes = {"Rectangle","Circle","Heart","Oval"};
+        final Spinner shape = new Spinner(this); String[] shapes = {"Rounded frame","Circle","Oval","Portrait oval"};
         shape.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, shapes));
         shape.setSelection(Math.max(0,Math.min(selfieFrameShape,shapes.length-1)));
         form.addView(settingsLabel("Selfie frame shape")); form.addView(shape);
@@ -1012,6 +1021,8 @@ public class MainActivity extends Activity {
             public void run() {
                 try { if (captureSession != null) captureSession.close(); } catch (Exception ignored) {}
                 captureSession = null;
+                if (faceImageReader != null) { try { faceImageReader.close(); } catch (Exception ignored) {} faceImageReader = null; }
+                if (frameView != null) frameView.clearFaces();
                 if (arCompositor != null) {
                     try { arCompositor.stop(); } catch (Exception ignored) {}
                     arCompositor = null;
@@ -1279,65 +1290,88 @@ public class MainActivity extends Activity {
 
     private Rect activeArray = null;
     private boolean isFrontCamera = true;
+    // Face geometry comes from MediaPipe 3D landmarks and expression coefficients on the YUV analysis stream.
+    // Camera2 STATISTICS_FACES rectangles are deliberately not used as AR landmarks.
     private CameraCaptureSession.CaptureCallback faceCallback = new CameraCaptureSession.CaptureCallback() {
-        @Override
-        public void onCaptureCompleted(CameraCaptureSession s, CaptureRequest req, TotalCaptureResult result) {
-            android.hardware.camera2.params.Face[] faces = result.get(CaptureResult.STATISTICS_FACES);
-            if (faces != null && faces.length > 0 && frameView != null) {
-                List<Rect> rects = new ArrayList<Rect>();
-                int vw = frameView.getWidth();
-                int vh = frameView.getHeight();
-                if (vw > 0 && vh > 0) {
-                    for (android.hardware.camera2.params.Face f : faces) {
-                        Rect r = f.getBounds();
-                        Rect mapped;
-                        if (activeArray != null && activeArray.width() > 0 && activeArray.height() > 0) {
-                            int left = (r.left - activeArray.left) * vw / activeArray.width();
-                            int top = (r.top - activeArray.top) * vh / activeArray.height();
-                            int right = (r.right - activeArray.left) * vw / activeArray.width();
-                            int bottom = (r.bottom - activeArray.top) * vh / activeArray.height();
-                            if (isFrontCamera) {
-                                int ml = vw - right;
-                                int mr = vw - left;
-                                left = ml;
-                                right = mr;
-                            }
-                            mapped = new Rect(left, top, right, bottom);
-                        } else {
-                            mapped = new Rect(r.left * vw / 1000, r.top * vh / 1000,
-                                    r.right * vw / 1000, r.bottom * vh / 1000);
-                        }
-                        rects.add(mapped);
-                    }
-                    frameView.setFaces(rects);
-                    if (arCompositor != null && faces.length > 0 && activeArray != null
-                            && activeArray.width() > 0 && activeArray.height() > 0) {
-                        // Normalize against the sensor active array, not the
-                        // letterboxed TextureView. This keeps encoded effect
-                        // geometry independent of preview widget dimensions.
-                        Rect sensorFace = faces[0].getBounds();
-                        float left = (sensorFace.left - activeArray.left) / (float) activeArray.width();
-                        float top = (sensorFace.top - activeArray.top) / (float) activeArray.height();
-                        float right = (sensorFace.right - activeArray.left) / (float) activeArray.width();
-                        float bottom = (sensorFace.bottom - activeArray.top) / (float) activeArray.height();
-                        if (isFrontCamera) {
-                            float mirroredLeft = 1f - right;
-                            right = 1f - left;
-                            left = mirroredLeft;
-                        }
-                        left = Math.max(0f, Math.min(1f, left));
-                        top = Math.max(0f, Math.min(1f, top));
-                        right = Math.max(0f, Math.min(1f, right));
-                        bottom = Math.max(0f, Math.min(1f, bottom));
-                        arCompositor.setFaceRect(left, top, right, bottom, isFrontCamera);
-                    }
-                    return;
-                }
-            }
-            if (frameView != null) frameView.clearFaces();
-            if (arCompositor != null) arCompositor.clearFace();
+        @Override public void onCaptureCompleted(CameraCaptureSession s, CaptureRequest req, TotalCaptureResult result) {
+            // Capture metadata callback retained for camera request lifecycle.
         }
     };
+
+    private void configureFaceAnalysis(CameraCharacteristics chars) {
+        try {
+            if (faceImageReader != null) { faceImageReader.close(); faceImageReader = null; }
+            android.hardware.camera2.params.StreamConfigurationMap map =
+                    chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+            if (map == null) return;
+            android.util.Size[] sizes = map.getOutputSizes(ImageFormat.YUV_420_888);
+            if (sizes == null || sizes.length == 0) return;
+            android.util.Size best = null;
+            double score = Double.MAX_VALUE;
+            float target = cameraBufferWidth / (float) cameraBufferHeight;
+            for (android.util.Size size : sizes) {
+                if (size.getWidth() < 320 || size.getHeight() < 240) continue;
+                if (size.getWidth() > 1280 || size.getHeight() > 1280) continue;
+                double ratioError = Math.abs(size.getWidth() / (double) size.getHeight() - target);
+                double areaError = Math.abs(size.getWidth() * (double) size.getHeight() - 640d * 480d) / (640d * 480d);
+                double candidate = ratioError * 100 + areaError;
+                if (candidate < score) { score = candidate; best = size; }
+            }
+            if (best == null) best = sizes[0];
+            faceImageReader = ImageReader.newInstance(best.getWidth(), best.getHeight(),
+                    ImageFormat.YUV_420_888, 3);
+            if (faceTrackingEngine == null) {
+                faceTrackingEngine = new FaceTrackingEngine(getApplicationContext(),
+                        new FaceTrackingEngine.Listener() {
+                    @Override public void onFaces(final FaceTrackingEngine.FaceFrame frame,
+                                                  final int width, final int height) {
+                        if (cameraHandler != null) cameraHandler.post(new Runnable() {
+                            @Override public void run() {
+                                if (arCompositor != null && !activityDestroyed)
+                                    arCompositor.setFaceFrame(frame, isFrontCamera);
+                            }
+                        });
+                        mainHandler.post(new Runnable() {
+                            @Override public void run() {
+                                if (activityDestroyed) return;
+                                AppState.faceFound = frame != null && frame.faceCount() > 0;
+                                if (coachView != null) coachView.setText(!AppState.faceFound
+                                        ? "Face not found · Move closer and face the camera"
+                                        : "Face mesh · " + frame.faceCount()
+                                                + (frame.faceCount()==1 ? " face" : " faces")
+                                                + " · 478 pts · " + frame.inferenceMs + " ms inference");
+                            }
+                        });
+                    }
+                    @Override public void onError(final String message) {
+                        mainHandler.post(new Runnable() {
+                            @Override public void run() {
+                                if (!activityDestroyed && coachView != null)
+                                    coachView.setText("Face tracking unavailable · " + message);
+                            }
+                        });
+                    }
+                });
+            }
+            faceImageReader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
+                @Override public void onImageAvailable(ImageReader reader) {
+                    Image image = null;
+                    try { image = reader.acquireLatestImage(); } catch (Exception ignored) {}
+                    if (image != null && faceTrackingEngine != null)
+                        faceTrackingEngine.process(image, faceInputRotationDegrees);
+                    else if (image != null) image.close();
+                }
+            }, cameraHandler);
+        } catch (Exception error) {
+            if (faceImageReader != null) { try { faceImageReader.close(); } catch (Exception ignored) {} faceImageReader = null; }
+            mainHandler.post(new Runnable() {
+                @Override public void run() {
+                    if (!activityDestroyed && coachView != null)
+                        coachView.setText("Face tracking setup failed · " + error.getMessage());
+                }
+            });
+        }
+    }
 
     private void showCameraWaiting() {
         waitingForCamera = true;
@@ -1388,6 +1422,42 @@ public class MainActivity extends Activity {
                     }
                     Integer facing = chars.get(CameraCharacteristics.LENS_FACING);
                     isFrontCamera = facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT;
+                    Integer sensorOrientation = chars.get(CameraCharacteristics.SENSOR_ORIENTATION);
+                    int displayRotation = getWindowManager().getDefaultDisplay().getRotation();
+                    int displayDegrees = displayRotation == Surface.ROTATION_90 ? 90
+                            : displayRotation == Surface.ROTATION_180 ? 180
+                            : displayRotation == Surface.ROTATION_270 ? 270 : 0;
+                    int sensorDegrees = sensorOrientation == null ? 0 : sensorOrientation;
+                    cameraRotationDegrees = isFrontCamera
+                            ? (360 - ((sensorDegrees + displayDegrees) % 360)) % 360
+                            : (sensorDegrees - displayDegrees + 360) % 360;
+                    // MediaPipe receives the sensor image; front-preview mirroring is applied only in the shared renderer.
+                    faceInputRotationDegrees = isFrontCamera
+                            ? (sensorDegrees + displayDegrees) % 360
+                            : (sensorDegrees - displayDegrees + 360) % 360;
+                    android.hardware.camera2.params.StreamConfigurationMap streamMap =
+                            chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+                    if (streamMap != null) {
+                        android.util.Size[] outputs = streamMap.getOutputSizes(SurfaceTexture.class);
+                        if (outputs != null && outputs.length > 0) {
+                            float targetRatio = (sensorDegrees % 180 == 90) ? (16f / 9f) : (9f / 16f);
+                            android.util.Size best = null;
+                            double bestScore = Double.MAX_VALUE;
+                            for (android.util.Size size : outputs) {
+                                int sw = size.getWidth(), sh = size.getHeight();
+                                if (sw <= 0 || sh <= 0 || sw > 1920 || sh > 1920) continue;
+                                float ratio = sw / (float) sh;
+                                double ratioError = Math.abs(ratio - targetRatio);
+                                double areaPenalty = 1.0 - Math.min(1.0, (sw * (double) sh) / (1280d * 720d));
+                                double score = ratioError * 100.0 + areaPenalty;
+                                if (score < bestScore) { bestScore = score; best = size; }
+                            }
+                            if (best == null) best = outputs[0];
+                            cameraBufferWidth = best.getWidth();
+                            cameraBufferHeight = best.getHeight();
+                        }
+                    }
+                    configureFaceAnalysis(chars);
                     if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) { cameraOpening = false; return; }
                     manager.openCamera(cameraId, new CameraDevice.StateCallback() {
                         public void onOpened(CameraDevice camera) {
@@ -1465,17 +1535,23 @@ public class MainActivity extends Activity {
             SurfaceTexture texture = textureView.getSurfaceTexture();
             if (texture == null) return;
             if (arCompositor == null) arCompositor = new ArCompositor(cameraHandler);
-            Surface cameraSurface = arCompositor.start(texture, 720, 1280);
-            arCompositor.setFilter(AppState.arFilter);
+            Surface cameraSurface = arCompositor.start(texture, cameraBufferWidth, cameraBufferHeight);
+            arCompositor.setFilter(0);
+            arCompositor.setEffect(AppState.arFilter);
             arCompositor.setFrameShape(frameView == null ? selfieFrameShape : frameView.getFrameShape());
+            arCompositor.setCameraOrientation(cameraRotationDegrees, isFrontCamera);
             if (captureSession != null) {
                 try { captureSession.close(); } catch (Exception ignored) {}
                 captureSession = null;
             }
             previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             previewBuilder.addTarget(cameraSurface);
+            if (faceImageReader != null) previewBuilder.addTarget(faceImageReader.getSurface());
             previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, faceDetectMode);
-            cameraDevice.createCaptureSession(Arrays.asList(cameraSurface), new CameraCaptureSession.StateCallback() {
+            List<Surface> previewOutputs = new ArrayList<Surface>();
+            previewOutputs.add(cameraSurface);
+            if (faceImageReader != null) previewOutputs.add(faceImageReader.getSurface());
+            cameraDevice.createCaptureSession(previewOutputs, new CameraCaptureSession.StateCallback() {
                 public void onConfigured(CameraCaptureSession session) {
                     captureSession = session;
                     try {
@@ -1488,9 +1564,27 @@ public class MainActivity extends Activity {
                     }
                 }
                 public void onConfigureFailed(CameraCaptureSession session) {
-                    mainHandler.post(new Runnable() { public void run() {
-                        if (statusView != null) statusView.setText("Camera preview configuration failed.");
-                    }});
+                    try { session.close(); } catch (Exception ignored) {}
+                    if (faceImageReader != null) {
+                        try { faceImageReader.close(); } catch (Exception ignored) {}
+                        faceImageReader = null;
+                        if (arCompositor != null) {
+                            try { arCompositor.stop(); } catch (Exception ignored) {}
+                            arCompositor = null;
+                        }
+                        if (frameView != null) frameView.clearFaces();
+                        mainHandler.post(new Runnable() {
+                            public void run() {
+                                if (coachView != null) coachView.setText("Face analysis stream is not supported by this camera.");
+                                if (statusView != null) statusView.setText("Camera preview active · face tracking unavailable on this device");
+                            }
+                        });
+                        startPreview();
+                    } else {
+                        mainHandler.post(new Runnable() { public void run() {
+                            if (statusView != null) statusView.setText("Camera preview configuration failed.");
+                        }});
+                    }
                 }
             }, cameraHandler);
         } catch (Exception e) {
@@ -1570,7 +1664,8 @@ public class MainActivity extends Activity {
                     recorder.prepare();
                     final File savedOutput = output;
                     final Surface recorderSurface = recorder.getSurface();
-                    arCompositor.setFilter(AppState.arFilter);
+                    arCompositor.setFilter(0);
+                    arCompositor.setEffect(AppState.arFilter);
                     arCompositor.setEncoderSurface(recorderSurface);
                     final Surface cameraInput = arCompositor.getCameraInputSurface();
                     if (cameraInput == null) throw new IllegalStateException("AR camera input is unavailable.");
@@ -1580,8 +1675,12 @@ public class MainActivity extends Activity {
                     }
                     previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
                     previewBuilder.addTarget(cameraInput);
+                    if (faceImageReader != null) previewBuilder.addTarget(faceImageReader.getSurface());
                     previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, faceDetectMode);
-                    cameraDevice.createCaptureSession(Arrays.asList(cameraInput), new CameraCaptureSession.StateCallback() {
+                    List<Surface> recordingOutputs = new ArrayList<Surface>();
+                    recordingOutputs.add(cameraInput);
+                    if (faceImageReader != null) recordingOutputs.add(faceImageReader.getSurface());
+                    cameraDevice.createCaptureSession(recordingOutputs, new CameraCaptureSession.StateCallback() {
                         public void onConfigured(CameraCaptureSession session) {
                             captureSession = session;
                             try {
@@ -1803,6 +1902,7 @@ public class MainActivity extends Activity {
                     }
                     try { if (captureSession != null) captureSession.close(); } catch (Exception ignored) {}
                     captureSession = null;
+                    if (faceImageReader != null) { try { faceImageReader.close(); } catch (Exception ignored) {} faceImageReader = null; }
                     if (arCompositor != null) {
                         try { arCompositor.stop(); } catch (Exception ignored) {}
                         arCompositor = null;
@@ -1812,6 +1912,7 @@ public class MainActivity extends Activity {
                 }
             });
         }
+        if (faceTrackingEngine != null) { try { faceTrackingEngine.close(); } catch (Exception ignored) {} faceTrackingEngine = null; }
         if (cameraThread != null) cameraThread.quitSafely();
     }
 }
