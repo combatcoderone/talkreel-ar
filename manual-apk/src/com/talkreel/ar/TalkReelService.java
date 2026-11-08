@@ -215,6 +215,15 @@ public class TalkReelService extends Service {
         collapse.setPadding(0, 0, 0, 0);
         collapse.setBackgroundColor(Color.TRANSPARENT);
         header.addView(collapse, new LinearLayout.LayoutParams(44, 42));
+        Button closeOverlay = new Button(this);
+        closeOverlay.setText("×");
+        closeOverlay.setTextColor(0xFFFFFFFF);
+        closeOverlay.setTextSize(18);
+        closeOverlay.setMinWidth(42);
+        closeOverlay.setPadding(0, 0, 0, 0);
+        closeOverlay.setBackgroundColor(Color.TRANSPARENT);
+        closeOverlay.setOnClickListener(v -> stopOverlay());
+        header.addView(closeOverlay, new LinearLayout.LayoutParams(44, 42));
         root.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 44));
 
         overlayControls = new LinearLayout(this);
