@@ -14,13 +14,13 @@ It is not a claim that the app is ready for public distribution.
 - Added a CI job that compiles the Media3-enabled Android source and uploads a debug APK artifact.
 - Targeted Android 16 / API 36 in both build paths and added edge-to-edge system-bar insets for Android 15+.
 - Separated overlay and recording foreground-service modes: the user-requested overlay uses the declared special-use type, while camera/microphone types are activated only for recording.
-- Added bundled ML Kit face contour detection to the Camera2 YUV analysis stream. The bundled model avoids a first-use model download.
+- Replaced ML Kit face rectangles/contours with MediaPipe Face Landmarker: 478 3D landmarks, 52 ARKit blendshape coefficients, 4x4 facial pose matrices and up to three simultaneous faces. The model is downloaded during the Gradle build and packaged in the APK for offline inference.
 
 ## Release blockers — not complete
 
 | Area | Status | Required work before a real release |
 |---|---|---|
-| Face tracking and effects | **Partially implemented; not release-ready** | ML Kit contour mode analyzes a Camera2 YUV stream and returns facial contours for eyes, lips and face shape. The preview renderer now has 20 contour-driven makeup/Halloween looks. Contour mode targets the most prominent face. These effects currently render in the live preview only; they are not yet composited into recorded/exported video. No 3D mesh, depth occlusion, expression blendshapes, multi-face effects or segmentation-based foundation is implemented. Device QA and encoder integration remain mandatory. |
+| Face tracking and effects | **Implemented foundation; device QA and advanced rendering remain** | MediaPipe Face Landmarker analyzes the Camera2 YUV stream off the camera/GL thread, returning 478 xyz landmarks, 52 blendshape scores and pose matrices for up to three faces. A smoothed result feeds the shared EGL renderer. Thirty face-anchored looks (makeup, Halloween, glasses, crown, jewelry and accessories) are rendered to both preview and encoder surfaces, so the live effect is recorded in the MP4. This is not yet a full commercial lens engine: true face-part segmentation, depth-based occlusion, rigged 3D assets and production-quality physically based makeup are still outstanding. Test orientation, thermal load, FPS, latency and exported output on physical devices. |
 | Media export integration | **Build validation pending** | The Media3 path is wired here, but the new Gradle CI job must pass. Test music looping, audio gain, source audio preservation, caption timing, orientation, pause/resume and export failure on physical devices. |
 | Camera and recording | **Device validation pending** | Test front/rear cameras, permission denial/recovery, camera contention with social apps, app background/foreground, rotation, repeated record cycles, pause/resume and low-storage handling on supported Android versions. |
 | Audio quality and synchronization | **Device validation pending** | Listen to exported files on device; verify microphone/music balance, clipping, silence, A/V sync, Bluetooth routing, interruptions and long clips. |
@@ -89,3 +89,14 @@ The AAB is still a release *candidate*, not a release: physical-device acceptanc
 - The ML Kit contours are currently preview-only. The encoder still receives the GPU camera compositor and basic color grade; the contour makeup is not burned into the saved recording. This is a hard release blocker for a camera-effects product.
 - ML Kit contour mode provides detailed contours for the prominent face, not MediaPipe's 478-point 3D face mesh or 52 expression blendshapes. Those capabilities remain future work.
 - The manual build script now invokes Gradle. A dependency-free javac build is not compatible with the bundled ML Kit dependency.
+
+
+## Face-tracked AR renderer milestone (v0.9.6 candidate)
+
+- MediaPipe Tasks Vision 1.1.1 is used with Face Landmarker in VIDEO mode. Input frames are converted from Camera2 YUV_420_888 to upright RGB bitmaps on a dedicated worker thread, with stale frames dropped while inference is busy.
+- Up to three faces are tracked. Each result carries 478 xyz landmarks, the full set of 52 ARKit blendshape coefficients and a 4x4 canonical-to-observed pose matrix. Landmark smoothing reduces frame-to-frame jitter.
+- The GPU compositor now renders face-anchored makeup, Halloween and accessory geometry after the camera texture pass. The exact same draw pass is invoked for both preview and encoder EGL surfaces; therefore selected effects are included in the camera recording rather than being UI-only.
+- The 30-look catalog includes ten makeup styles, ten Halloween styles and ten accessory/creative styles.
+- The model is downloaded by a Gradle preBuild task and packaged into the APK, so no first-run model download is required on the device.
+- Current renderer is a 2D overlay renderer driven by 3D face landmarks and expression scores. It is not yet a fully rigged 3D asset pipeline; no dense face-part segmentation or depth/occlusion compositing is implemented. Those remain explicit release blockers for claims of Snapchat-equivalent quality.
+- The MediaPipe frame conversion and 3-face inference path needs physical-device performance validation. Build success alone does not establish stable FPS, thermal behavior, accurate camera rotation/mirroring or effect alignment.
