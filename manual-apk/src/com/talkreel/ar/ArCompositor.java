@@ -186,8 +186,9 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
             drawPolygon(mesh,LEFT_EYE,eye,0.0f);
             drawPolygon(mesh,RIGHT_EYE,eye,0.0f);
             drawPolygon(mesh,LIPS,lip,0.0f);
-            drawCircle(mesh,117,cheek,0.027f);
-            drawCircle(mesh,346,cheek,0.027f);
+            float faceScale=faceScale(mesh);
+            drawCircle(mesh,117,cheek,0.027f*faceScale);
+            drawCircle(mesh,346,cheek,0.027f*faceScale);
             if(effect>=10 && effect<20) drawHalloween(mesh,expr);
             else if(effect>=20) drawAccessories(mesh);
             else if(effect==1 || effect==3 || effect==9) drawSparkleAccents(mesh);
@@ -299,6 +300,7 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     }
 
     private void drawAccessories(float[] m) {
+        float scale=faceScale(m);
         switch(effect) {
             case 20: // Crystal glasses follow both orbital rims.
                 drawOutline(m,LEFT_EYE,0xFF8EDBFF,3.0f);
@@ -321,16 +323,16 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
                 drawCircle(m,397,0xFFEFE5DD,0.010f);
                 break;
             case 23: // Cat ears.
-                drawPolygonCoords(around(point(m,10),-0.11f,-0.08f,-0.035f,-0.24f,0.01f,-0.08f),0xDD493052);
-                drawPolygonCoords(around(point(m,10),0.035f,-0.08f,0.11f,-0.24f,0.14f,-0.07f),0xDD493052);
+                drawPolygonCoords(around(point(m,10),scale,-0.11f,-0.08f,-0.035f,-0.24f,0.01f,-0.08f),0xDD493052);
+                drawPolygonCoords(around(point(m,10),scale,0.035f,-0.08f,0.11f,-0.24f,0.14f,-0.07f),0xDD493052);
                 break;
             case 24: // Bunny ears.
-                drawPolygonCoords(around(point(m,10),-0.09f,-0.05f,-0.13f,-0.28f,-0.045f,-0.24f),0xDDE9C8D8);
-                drawPolygonCoords(around(point(m,10),0.04f,-0.05f,0.13f,-0.25f,0.10f,-0.04f),0xDDE9C8D8);
+                drawPolygonCoords(around(point(m,10),scale,-0.09f,-0.05f,-0.13f,-0.28f,-0.045f,-0.24f),0xDDE9C8D8);
+                drawPolygonCoords(around(point(m,10),scale,0.04f,-0.05f,0.13f,-0.25f,0.10f,-0.04f),0xDDE9C8D8);
                 break;
             case 25: // Halo.
                 float[] top=point(m,10);
-                drawEllipseOutline(top[0],top[1]-0.12f,0xFFFFE7A8,0.105f,0.018f,2.5f);
+                drawEllipseOutline(top[0],top[1]-0.12f*scale,0xFFFFE7A8,0.105f*scale,0.018f*scale,2.5f);
                 break;
             case 26: // Butterfly wings at the temples.
                 drawTriangle(m,234,127,93,0xBB7BC8F4);
@@ -356,9 +358,16 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
                 break;
         }
     }
-    private float[] around(float[] center,float... offsets) {
+    // Normalize accessory dimensions to inter-temple distance so lenses retain
+    // plausible proportions as a face moves toward or away from the camera.
+    private float faceScale(float[] mesh) {
+        float[] left=point(mesh,234),right=point(mesh,454);
+        float width=(float)Math.hypot(right[0]-left[0],right[1]-left[1]);
+        return Math.max(0.55f,Math.min(1.8f,width/0.34f));
+    }
+    private float[] around(float[] center,float scale,float... offsets) {
         float[] p=new float[offsets.length];
-        for(int i=0;i<offsets.length;i+=2){p[i]=center[0]+offsets[i];p[i+1]=center[1]+offsets[i+1];}
+        for(int i=0;i<offsets.length;i+=2){p[i]=center[0]+offsets[i]*scale;p[i+1]=center[1]+offsets[i+1]*scale;}
         return p;
     }
     private void drawEllipseOutline(float x,float y,int color,float rx,float ry,float width) {
