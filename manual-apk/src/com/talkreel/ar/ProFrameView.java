@@ -12,7 +12,6 @@ import android.util.AttributeSet;
 import android.view.View;
 import com.google.mlkit.vision.face.Face;
 import com.google.mlkit.vision.face.FaceContour;
-import com.google.mlkit.vision.face.FaceLandmark;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -143,9 +142,9 @@ public class ProFrameView extends View {
     }
 
     private void drawCheek(Canvas c,Face face,int type,int w,int h,int color) {
-        com.google.mlkit.vision.face.FaceLandmark landmark=face.getLandmark(type);
-        if(landmark==null)return;
-        PointF p=map(landmark.getPosition(),w,h);
+        com.google.mlkit.vision.face.FaceContour cheek=face.getContour(type);
+        if(cheek==null||cheek.getPoints().isEmpty())return;
+        PointF p=map(cheek.getPoints().get(0),w,h);
         paint.setStyle(Paint.Style.FILL); paint.setColor(color); paint.setAlpha(85);
         c.drawCircle(p.x,p.y,Math.max(9,getWidth()*.035f),paint);
     }
