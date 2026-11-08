@@ -21,6 +21,9 @@ import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.media.MediaRecorder;
+import android.media.Image;
+import android.media.ImageReader;
+import android.graphics.ImageFormat;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
@@ -71,6 +74,9 @@ public class MainActivity extends Activity {
     private volatile int cameraRotationDegrees = 0;
     private volatile int cameraBufferWidth = 1280;
     private volatile int cameraBufferHeight = 720;
+    private volatile int faceInputRotationDegrees = 0;
+    private ImageReader faceImageReader;
+    private FaceTrackingEngine faceTrackingEngine;
     private TextureView textureView;
     private ProFrameView frameView;
     private TextView statusView;
@@ -375,7 +381,7 @@ public class MainActivity extends Activity {
             public void onClick(View v) {
                 AppState.arFilter = (AppState.arFilter + 1) % ProFrameView.FILTER_COUNT;
                 frameView.setFilter(AppState.arFilter);
-                if (arCompositor != null) arCompositor.setFilter(AppState.arFilter);
+                if (arCompositor != null) arCompositor.setFilter(AppState.arFilter % 6);
                 arFilterButton.setText("Camera look: " + ProFrameView.filterName(AppState.arFilter));
                 savePrefs();
                 statusView.setText("AR effect: " + ProFrameView.filterName(AppState.arFilter) + " · Applied to preview and recording");
@@ -1282,49 +1288,68 @@ public class MainActivity extends Activity {
 
     private Rect activeArray = null;
     private boolean isFrontCamera = true;
+    // Face geometry comes from ML Kit contours on the YUV analysis stream.
+    // Camera2 STATISTICS_FACES rectangles are deliberately not used as AR landmarks.
     private CameraCaptureSession.CaptureCallback faceCallback = new CameraCaptureSession.CaptureCallback() {
-        @Override
-        public void onCaptureCompleted(CameraCaptureSession s, CaptureRequest req, TotalCaptureResult result) {
-            android.hardware.camera2.params.Face[] faces = result.get(CaptureResult.STATISTICS_FACES);
-            if (faces != null && faces.length > 0 && frameView != null) {
-                List<Rect> rects = new ArrayList<Rect>();
-                int vw = frameView.getWidth();
-                int vh = frameView.getHeight();
-                if (vw > 0 && vh > 0) {
-                    for (android.hardware.camera2.params.Face f : faces) {
-                        Rect r = f.getBounds();
-                        Rect mapped;
-                        if (activeArray != null && activeArray.width() > 0 && activeArray.height() > 0) {
-                            int left = (r.left - activeArray.left) * vw / activeArray.width();
-                            int top = (r.top - activeArray.top) * vh / activeArray.height();
-                            int right = (r.right - activeArray.left) * vw / activeArray.width();
-                            int bottom = (r.bottom - activeArray.top) * vh / activeArray.height();
-                            if (isFrontCamera) {
-                                int ml = vw - right;
-                                int mr = vw - left;
-                                left = ml;
-                                right = mr;
-                            }
-                            mapped = new Rect(left, top, right, bottom);
-                        } else {
-                            mapped = new Rect(r.left * vw / 1000, r.top * vh / 1000,
-                                    r.right * vw / 1000, r.bottom * vh / 1000);
-                        }
-                        rects.add(mapped);
-                    }
-                    frameView.setFaces(rects);
-                    if (arCompositor != null && !rects.isEmpty()) {
-                        Rect face = rects.get(0);
-                        arCompositor.setFaceRect(face.left / (float) vw, face.top / (float) vh,
-                                face.right / (float) vw, face.bottom / (float) vh, isFrontCamera);
-                    }
-                    return;
-                }
-            }
-            if (frameView != null) frameView.clearFaces();
-            if (arCompositor != null) arCompositor.clearFace();
+        @Override public void onCaptureCompleted(CameraCaptureSession s, CaptureRequest req, TotalCaptureResult result) {
+            // Capture metadata callback retained for camera request lifecycle.
         }
     };
+
+    private void configureFaceAnalysis(CameraCharacteristics chars) {
+        try {
+            if (faceImageReader != null) { faceImageReader.close(); faceImageReader = null; }
+            android.hardware.camera2.params.StreamConfigurationMap map =
+                    chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+            if (map == null) return;
+            android.util.Size[] sizes = map.getOutputSizes(ImageFormat.YUV_420_888);
+            if (sizes == null || sizes.length == 0) return;
+            android.util.Size best = null;
+            double score = Double.MAX_VALUE;
+            float target = cameraBufferWidth / (float) cameraBufferHeight;
+            for (android.util.Size size : sizes) {
+                if (size.getWidth() < 320 || size.getHeight() < 240) continue;
+                if (size.getWidth() > 1280 || size.getHeight() > 1280) continue;
+                double ratioError = Math.abs(size.getWidth() / (double) size.getHeight() - target);
+                double areaError = Math.abs(size.getWidth() * (double) size.getHeight() - 640d * 480d) / (640d * 480d);
+                double candidate = ratioError * 100 + areaError;
+                if (candidate < score) { score = candidate; best = size; }
+            }
+            if (best == null) best = sizes[0];
+            faceImageReader = ImageReader.newInstance(best.getWidth(), best.getHeight(),
+                    ImageFormat.YUV_420_888, 2);
+            if (faceTrackingEngine == null) {
+                faceTrackingEngine = new FaceTrackingEngine(getApplicationContext(),
+                        new FaceTrackingEngine.Listener() {
+                    @Override public void onFaces(final List<com.google.mlkit.vision.face.Face> faces,
+                                                  final int width, final int height) {
+                        mainHandler.post(new Runnable() {
+                            @Override public void run() {
+                                if (frameView != null && !activityDestroyed)
+                                    frameView.setFaceResults(faces, width, height,
+                                            faceInputRotationDegrees, isFrontCamera);
+                                if (coachView != null && !activityDestroyed)
+                                    coachView.setText(faces.isEmpty()
+                                            ? "Face not found · Move closer and face the camera"
+                                            : "Face tracking · " + faces.size() + (faces.size()==1?" face":" faces"));
+                            }
+                        });
+                    }
+                });
+            }
+            faceImageReader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
+                @Override public void onImageAvailable(ImageReader reader) {
+                    Image image = null;
+                    try { image = reader.acquireLatestImage(); } catch (Exception ignored) {}
+                    if (image != null && faceTrackingEngine != null)
+                        faceTrackingEngine.process(image, faceInputRotationDegrees);
+                    else if (image != null) image.close();
+                }
+            }, cameraHandler);
+        } catch (Exception error) {
+            if (faceImageReader != null) { try { faceImageReader.close(); } catch (Exception ignored) {} faceImageReader = null; }
+        }
+    }
 
     private void showCameraWaiting() {
         waitingForCamera = true;
@@ -1384,6 +1409,8 @@ public class MainActivity extends Activity {
                     cameraRotationDegrees = isFrontCamera
                             ? (360 - ((sensorDegrees + displayDegrees) % 360)) % 360
                             : (sensorDegrees - displayDegrees + 360) % 360;
+                    // ML Kit receives the sensor image, so do not apply the front-preview mirror inversion.
+                    faceInputRotationDegrees = (sensorDegrees - displayDegrees + 360) % 360;
                     android.hardware.camera2.params.StreamConfigurationMap streamMap =
                             chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
                     if (streamMap != null) {
@@ -1406,6 +1433,7 @@ public class MainActivity extends Activity {
                             cameraBufferHeight = best.getHeight();
                         }
                     }
+                    configureFaceAnalysis(chars);
                     if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) { cameraOpening = false; return; }
                     manager.openCamera(cameraId, new CameraDevice.StateCallback() {
                         public void onOpened(CameraDevice camera) {
@@ -1484,7 +1512,7 @@ public class MainActivity extends Activity {
             if (texture == null) return;
             if (arCompositor == null) arCompositor = new ArCompositor(cameraHandler);
             Surface cameraSurface = arCompositor.start(texture, cameraBufferWidth, cameraBufferHeight);
-            arCompositor.setFilter(AppState.arFilter);
+            arCompositor.setFilter(AppState.arFilter % 6);
             arCompositor.setCameraOrientation(cameraRotationDegrees);
             if (captureSession != null) {
                 try { captureSession.close(); } catch (Exception ignored) {}
@@ -1492,8 +1520,12 @@ public class MainActivity extends Activity {
             }
             previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             previewBuilder.addTarget(cameraSurface);
+            if (faceImageReader != null) previewBuilder.addTarget(faceImageReader.getSurface());
             previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, faceDetectMode);
-            cameraDevice.createCaptureSession(Arrays.asList(cameraSurface), new CameraCaptureSession.StateCallback() {
+            List<Surface> previewOutputs = new ArrayList<Surface>();
+            previewOutputs.add(cameraSurface);
+            if (faceImageReader != null) previewOutputs.add(faceImageReader.getSurface());
+            cameraDevice.createCaptureSession(previewOutputs, new CameraCaptureSession.StateCallback() {
                 public void onConfigured(CameraCaptureSession session) {
                     captureSession = session;
                     try {
@@ -1598,8 +1630,12 @@ public class MainActivity extends Activity {
                     }
                     previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
                     previewBuilder.addTarget(cameraInput);
+                    if (faceImageReader != null) previewBuilder.addTarget(faceImageReader.getSurface());
                     previewBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, faceDetectMode);
-                    cameraDevice.createCaptureSession(Arrays.asList(cameraInput), new CameraCaptureSession.StateCallback() {
+                    List<Surface> recordingOutputs = new ArrayList<Surface>();
+                    recordingOutputs.add(cameraInput);
+                    if (faceImageReader != null) recordingOutputs.add(faceImageReader.getSurface());
+                    cameraDevice.createCaptureSession(recordingOutputs, new CameraCaptureSession.StateCallback() {
                         public void onConfigured(CameraCaptureSession session) {
                             captureSession = session;
                             try {
