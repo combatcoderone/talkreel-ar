@@ -81,7 +81,7 @@ public final class Media3ExportPipeline {
         final File output = new File(source.getParentFile(), removeExtension(source.getName()) + "-final.mp4");
         final File temporary = new File(source.getParentFile(), removeExtension(source.getName()) + "-final.tmp.mp4");
         if (temporary.exists()) temporary.delete();
-        if (output.exists()) output.delete();
+        // Keep the previous successful export until its replacement is fully verified.
 
         try {
             List<Caption> captions = srt != null && srt.isFile() ? readSrt(srt) : Collections.<Caption>emptyList();
@@ -99,14 +99,11 @@ public final class Media3ExportPipeline {
             final Composition composition;
             if (music != null && music.isFile() && music.length() > 0) {
                 // Keep music under the microphone track instead of letting it compete
-                // at full scale. Preserve mono/stereo layouts and downmix multichannel
-                // sources to stereo: Media3 supports 1-6 input channels but only
-                // 1-2 output channels for ChannelMixingMatrix.
+                // at full scale. Apply a conservative 20% gain for mono/stereo sources.
                 ChannelMixingAudioProcessor musicGain = new ChannelMixingAudioProcessor();
-                for (int inputChannels = 1; inputChannels <= 6; inputChannels++) {
-                    int outputChannels = Math.min(inputChannels, 2);
+                for (int channels = 1; channels <= 6; channels++) {
                     ChannelMixingMatrix matrix = ChannelMixingMatrix.createForConstantPower(
-                            inputChannels, outputChannels);
+                            channels, /* outputChannelCount= */ channels);
                     musicGain.putChannelMixingMatrix(matrix.scaleBy(0.20f));
                 }
                 Effects musicEffects = new Effects(
@@ -129,7 +126,9 @@ public final class Media3ExportPipeline {
                         @Override
                         public void onCompleted(Composition ignored, ExportResult result) {
                             synchronized (Media3ExportPipeline.class) { activeTransformer = null; }
-                            String verificationFailure = verifyMuxedOutput(source, temporary);
+                            boolean expectAudio = hasAudioTrack(source)
+                                    || (music != null && music.isFile() && music.length() > 0);
+                            String verificationFailure = verifyMuxedOutput(source, temporary, expectAudio);
                             if (verificationFailure != null) {
                                 temporary.delete();
                                 Toast.makeText(activity, "Export verification failed: " + verificationFailure
@@ -137,9 +136,9 @@ public final class Media3ExportPipeline {
                                 if (callbackHandler != null && onFailed != null) callbackHandler.post(onFailed);
                                 return;
                             }
-                            if (!temporary.renameTo(output)) {
+                            if (!publishVerifiedOutput(temporary, output)) {
                                 temporary.delete();
-                                Toast.makeText(activity, "Export finished, but final file could not be moved. Original is safe.", Toast.LENGTH_LONG).show();
+                                Toast.makeText(activity, "Export finished, but the verified file could not replace the previous export. Existing files are safe.", Toast.LENGTH_LONG).show();
                                 if (callbackHandler != null && onFailed != null) callbackHandler.post(onFailed);
                                 return;
                             }
@@ -168,61 +167,65 @@ public final class Media3ExportPipeline {
         }
     }
 
-    /**
-     * Verifies the muxed file, rather than treating Transformer completion as proof
-     * that the expected MP4 streams were written. The recording path always captures
-     * microphone audio, so a missing audio track is a failed export.
-     */
-    private static String verifyMuxedOutput(File source, File output) {
-        if (output == null || !output.isFile() || output.length() <= 0) {
-            return "the output file is missing or empty";
-        }
-        MediaExtractor outputExtractor = new MediaExtractor();
-        MediaExtractor sourceExtractor = new MediaExtractor();
+    /** Inspect the muxed file before publishing it as the final recording. */
+    private static boolean hasAudioTrack(File file) {
+        MediaExtractor extractor=new MediaExtractor();
         try {
-            outputExtractor.setDataSource(output.getAbsolutePath());
-            boolean hasVideo = false;
-            boolean hasAudio = false;
-            long outputDurationUs = 0L;
-            for (int i = 0; i < outputExtractor.getTrackCount(); i++) {
-                MediaFormat format = outputExtractor.getTrackFormat(i);
-                String mime = format.containsKey(MediaFormat.KEY_MIME)
-                        ? format.getString(MediaFormat.KEY_MIME) : null;
-                if (mime != null && mime.startsWith("video/")) hasVideo = true;
-                if (mime != null && mime.startsWith("audio/")) hasAudio = true;
-                if (format.containsKey(MediaFormat.KEY_DURATION)) {
-                    outputDurationUs = Math.max(outputDurationUs,
-                            format.getLong(MediaFormat.KEY_DURATION));
-                }
+            extractor.setDataSource(file.getAbsolutePath());
+            for(int i=0;i<extractor.getTrackCount();i++){
+                String mime=extractor.getTrackFormat(i).getString(MediaFormat.KEY_MIME);
+                if(mime!=null&&mime.startsWith("audio/"))return true;
             }
-            if (!hasVideo) return "the MP4 has no video track";
-            if (!hasAudio) return "the MP4 has no microphone/audio track";
-            if (outputDurationUs <= 0L) return "the MP4 duration is unavailable";
-
-            sourceExtractor.setDataSource(source.getAbsolutePath());
-            long sourceDurationUs = 0L;
-            for (int i = 0; i < sourceExtractor.getTrackCount(); i++) {
-                MediaFormat format = sourceExtractor.getTrackFormat(i);
-                if (format.containsKey(MediaFormat.KEY_DURATION)) {
-                    sourceDurationUs = Math.max(sourceDurationUs,
-                            format.getLong(MediaFormat.KEY_DURATION));
-                }
-            }
-            if (sourceDurationUs > 0L) {
-                long toleranceUs = Math.max(1_500_000L, sourceDurationUs / 50L);
-                if (Math.abs(outputDurationUs - sourceDurationUs) > toleranceUs) {
-                    return "the exported duration differs materially from the source";
-                }
-            }
-            return null;
-        } catch (Exception error) {
-            return "the MP4 streams could not be inspected";
-        } finally {
-            try { outputExtractor.release(); } catch (Exception ignored) {}
-            try { sourceExtractor.release(); } catch (Exception ignored) {}
-        }
+        } catch(Exception ignored) { }
+        finally { try{extractor.release();}catch(Exception ignored){} }
+        return false;
     }
-
+    private static String verifyMuxedOutput(File source,File output,boolean expectAudio) {
+        if(output==null||!output.isFile()||output.length()<=0)return "the output file is missing or empty";
+        MediaExtractor out=new MediaExtractor(),in=new MediaExtractor();
+        try {
+            out.setDataSource(output.getAbsolutePath());
+            boolean video=false,audio=false;long videoDuration=0L;
+            for(int i=0;i<out.getTrackCount();i++){
+                MediaFormat format=out.getTrackFormat(i);
+                String mime=format.getString(MediaFormat.KEY_MIME);
+                if(mime!=null&&mime.startsWith("video/")){
+                    video=true;
+                    if(format.containsKey(MediaFormat.KEY_DURATION))videoDuration=Math.max(videoDuration,format.getLong(MediaFormat.KEY_DURATION));
+                }
+                if(mime!=null&&mime.startsWith("audio/"))audio=true;
+            }
+            if(!video)return "the MP4 has no video track";
+            if(expectAudio&&!audio)return "the MP4 is missing its expected audio track";
+            if(videoDuration<=0L)return "the MP4 video duration is unavailable";
+            in.setDataSource(source.getAbsolutePath());long sourceVideoDuration=0L;
+            for(int i=0;i<in.getTrackCount();i++){
+                MediaFormat format=in.getTrackFormat(i);
+                String mime=format.getString(MediaFormat.KEY_MIME);
+                if(mime!=null&&mime.startsWith("video/")&&format.containsKey(MediaFormat.KEY_DURATION))
+                    sourceVideoDuration=Math.max(sourceVideoDuration,format.getLong(MediaFormat.KEY_DURATION));
+            }
+            if(sourceVideoDuration>0L&&Math.abs(videoDuration-sourceVideoDuration)>Math.max(1500000L,sourceVideoDuration/50L))
+                return "the exported video duration differs materially from the source";
+            return null;
+        } catch(Exception error) { return "the MP4 streams could not be inspected"; }
+        finally { try{out.release();}catch(Exception ignored){} try{in.release();}catch(Exception ignored){} }
+    }
+    /** Preserve an existing final export if the verified replacement cannot be moved. */
+    private static boolean publishVerifiedOutput(File temporary,File output) {
+        File backup=null;
+        if(output.exists()){
+            backup=new File(output.getParentFile(),output.getName()+".previous-"+System.nanoTime());
+            if(!output.renameTo(backup))return false;
+        }
+        if(temporary.renameTo(output)){
+            if(backup!=null)backup.delete();
+            return true;
+        }
+        if(backup!=null&&!backup.renameTo(output))
+            android.util.Log.e("TalkReelExport","Could not restore previous export from "+backup.getAbsolutePath());
+        return false;
+    }
     private static boolean hasEncoder(String mimeType) {
         try {
             MediaCodecList codecs = new MediaCodecList(MediaCodecList.REGULAR_CODECS);
