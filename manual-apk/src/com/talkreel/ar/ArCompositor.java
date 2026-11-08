@@ -8,6 +8,7 @@ import android.opengl.GLES20;
 import android.view.Surface;
 import android.os.Handler;
 import android.util.Log;
+import android.graphics.PointF;
 
 /**
  * Camera-to-encoder GPU bridge. Camera2 writes to the input SurfaceTexture;
@@ -24,7 +25,7 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     private static final String FRAGMENT =
         "#extension GL_OES_EGL_image_external : require\n" +
         "precision mediump float; varying vec2 vTexCoord; " +
-        "uniform samplerExternalOES sTexture; uniform int uFilter; uniform vec4 uFaceRect; uniform int uHasFace; uniform int uMirror; uniform float uFaceConfidence; uniform int uAutoLight; " +
+        "uniform samplerExternalOES sTexture; uniform int uFilter; uniform vec4 uFaceRect; uniform int uHasFace; uniform int uMirror; uniform float uFaceConfidence; uniform int uAutoLight; uniform int uHasLandmarks; uniform vec2 uLeftEye; uniform vec2 uRightEye; uniform vec2 uMouth; " +
         "void main(){ vec4 c=texture2D(sTexture,vTexCoord); vec2 q=vec2(vTexCoord.x,1.0-vTexCoord.y); if(uMirror==1) q.x=1.0-q.x; float faceMask=0.0; if(uHasFace==1){ float inside=step(uFaceRect.x,q.x)*step(q.x,uFaceRect.z)*step(uFaceRect.y,q.y)*step(q.y,uFaceRect.w); float edge=min(min(q.x-uFaceRect.x,uFaceRect.z-q.x),min(q.y-uFaceRect.y,uFaceRect.w-q.y)); faceMask=inside*(1.0-smoothstep(0.0,0.035,edge)); } if(uAutoLight==1){ float y=dot(c.rgb,vec3(.299,.587,.114)); float shadow=1.0-smoothstep(.10,.48,y); float gain=clamp(.46/max(y,.15),.90,1.16); float lift=shadow*.075*faceMask*uFaceConfidence; c.rgb=min(vec3(1.0),c.rgb*(1.0+(gain-1.0)*.38*faceMask*uFaceConfidence)+vec3(lift)); float hi=max(0.0,dot(c.rgb,vec3(.299,.587,.114))-.82); c.rgb=max(vec3(0.0),c.rgb-vec3(hi*.16)); } " +
         "if(uFilter==1){ c.rgb=mix(c.rgb,vec3(dot(c.rgb,vec3(.299,.587,.114))),.08); c.rgb=min(vec3(1.0),c.rgb*1.10+vec3(.025)); } " +
         "else if(uFilter==2){ c.rgb=mix(c.rgb,vec3(.12,.24,.34),.12); } " +
@@ -37,11 +38,11 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         "else if(uFilter==9){ c.rgb=mix(c.rgb,vec3(.72,.45,.22),.08); } " +
         "else if(uFilter==10){ c.rgb=mix(c.rgb,vec3(.62,.39,.22),.10); } " +
         "vec3 filteredBase=c.rgb; if(uHasFace==1 && uFilter>=2 && uFilter<=10){ vec2 sz=uFaceRect.zw-uFaceRect.xy; vec2 ctr=(uFaceRect.xy+uFaceRect.zw)*.5; " +
-        "if(uFilter==2){ vec2 e=ctr+vec2(0.,-sz.y*.10); vec2 l=(q-(e+vec2(-sz.x*.23,0.)))/vec2(sz.x*.20,sz.y*.105); vec2 r=(q-(e+vec2(sz.x*.23,0.)))/vec2(sz.x*.20,sz.y*.105); if(dot(l,l)<1.0||dot(r,r)<1.0)c.rgb=mix(c.rgb,vec3(.08,.55,.92),.68); } " +
+        "if(uFilter==2){ if(uHasLandmarks==1 && distance(uLeftEye,uRightEye)>.01){ vec2 axis=normalize(uRightEye-uLeftEye); vec2 normal=vec2(-axis.y,axis.x); float span=distance(uLeftEye,uRightEye); vec2 dl=q-uLeftEye; vec2 dr=q-uRightEye; vec2 l=vec2(dot(dl,axis)/(span*.25),dot(dl,normal)/(span*.19)); vec2 r=vec2(dot(dr,axis)/(span*.25),dot(dr,normal)/(span*.19)); if(dot(l,l)<1.0||dot(r,r)<1.0)c.rgb=mix(c.rgb,vec3(.08,.55,.92),.68); vec2 bridge=q-(uLeftEye+uRightEye)*.5; if(abs(dot(bridge,normal))<span*.025 && abs(dot(bridge,axis))<span*.12)c.rgb=mix(c.rgb,vec3(.08,.55,.92),.68); } else { vec2 e=ctr+vec2(0.,-sz.y*.10); vec2 l=(q-(e+vec2(-sz.x*.23,0.)))/vec2(sz.x*.20,sz.y*.105); vec2 r=(q-(e+vec2(sz.x*.23,0.)))/vec2(sz.x*.20,sz.y*.105); if(dot(l,l)<1.0||dot(r,r)<1.0)c.rgb=mix(c.rgb,vec3(.08,.55,.92),.68); } } " +
         "if(uFilter==3){ vec2 l=(q-(ctr+vec2(-sz.x*.27,-sz.y*.64)))/vec2(sz.x*.13,sz.y*.34); vec2 r=(q-(ctr+vec2(sz.x*.27,-sz.y*.64)))/vec2(sz.x*.13,sz.y*.34); if(dot(l,l)<1.0||dot(r,r)<1.0)c.rgb=mix(c.rgb,vec3(1.0,.55,.72),.88); } " +
         "if(uFilter==4 && q.y<ctr.y-sz.y*.56 && q.y>ctr.y-sz.y*1.02 && abs(q.x-ctr.x)<sz.x*.5)c.rgb=mix(c.rgb,vec3(1.0,.72,.08),.95); " +
         "if(uFilter==5){ float edge=min(min(abs(q.x-uFaceRect.x),abs(q.x-uFaceRect.z)),min(abs(q.y-uFaceRect.y),abs(q.y-uFaceRect.w))); if(edge<.009)c.rgb=mix(c.rgb,vec3(.0,.95,1.0),.98); } " +
-        "if(uFilter==7){ vec2 l=(q-(ctr+vec2(-sz.x*.23,sz.y*.18)))/vec2(sz.x*.12,sz.y*.075); vec2 r=(q-(ctr+vec2(sz.x*.23,sz.y*.18)))/vec2(sz.x*.12,sz.y*.075); vec2 lip=(q-(ctr+vec2(0.,sz.y*.32)))/vec2(sz.x*.20,sz.y*.055); if(dot(l,l)<1.0||dot(r,r)<1.0)c.rgb=mix(c.rgb,vec3(1.0,.28,.42),.52); if(dot(lip,lip)<1.0)c.rgb=mix(c.rgb,vec3(.78,.05,.22),.82); } " +
+        "if(uFilter==7){ if(uHasLandmarks==1 && distance(uLeftEye,uRightEye)>.01 && uMouth.x>=0.0){ vec2 axis=normalize(uRightEye-uLeftEye); vec2 normal=vec2(-axis.y,axis.x); vec2 dm=q-uMouth; float span=distance(uLeftEye,uRightEye); vec2 lip=vec2(dot(dm,axis)/(.24*span),dot(dm,normal)/(.075*span)); if(dot(lip,lip)<1.0)c.rgb=mix(c.rgb,vec3(.78,.05,.22),.82); } else { vec2 l=(q-(ctr+vec2(-sz.x*.23,sz.y*.18)))/vec2(sz.x*.12,sz.y*.075); vec2 r=(q-(ctr+vec2(sz.x*.23,sz.y*.18)))/vec2(sz.x*.12,sz.y*.075); vec2 lip=(q-(ctr+vec2(0.,sz.y*.32)))/vec2(sz.x*.20,sz.y*.055); if(dot(l,l)<1.0||dot(r,r)<1.0)c.rgb=mix(c.rgb,vec3(1.0,.28,.42),.52); if(dot(lip,lip)<1.0)c.rgb=mix(c.rgb,vec3(.78,.05,.22),.82); } } " +
         "if(uFilter==8 && abs(q.x-ctr.x)<sz.x*.48 && q.y>ctr.y-sz.y*.48 && q.y<ctr.y+sz.y*.48){ c.rgb=mix(c.rgb,vec3(.16,.18,.22),.40); } " +
         "if(uFilter==9 && q.y<ctr.y-sz.y*.52 && q.y>ctr.y-sz.y*1.0 && abs(q.x-ctr.x)<sz.x*.5){ c.rgb=mix(c.rgb,vec3(.20,.12,.08),.92); } " +
         "if(uFilter==10 && q.y<ctr.y-sz.y*.28 && q.y>ctr.y-sz.y*.95 && abs(q.x-ctr.x)<sz.x*.62){ c.rgb=mix(c.rgb,vec3(.45,.24,.12),.82); } " +
@@ -59,11 +60,13 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     private int guidePositionLoc, guideColorLoc;
     private volatile int frameShape;
     private volatile int filter;
-    private int positionLoc, texCoordLoc, matrixLoc, filterLoc, faceRectLoc, hasFaceLoc, mirrorLoc, samplerLoc, faceConfidenceLoc, autoLightLoc;
+    private int positionLoc, texCoordLoc, matrixLoc, filterLoc, faceRectLoc, hasFaceLoc, mirrorLoc, samplerLoc, faceConfidenceLoc, autoLightLoc, hasLandmarksLoc, leftEyeLoc, rightEyeLoc, mouthLoc;
     private java.nio.FloatBuffer vertexBuffer, texBuffer;
     private volatile float faceLeft, faceTop, faceRight, faceBottom;
     private volatile boolean hasFace, mirrorFace;
     private volatile float faceConfidence = 0f;
+    private volatile float leftEyeX=-1f, leftEyeY=-1f, rightEyeX=-1f, rightEyeY=-1f, mouthX=-1f, mouthY=-1f;
+    private volatile boolean hasLandmarks=false;
     private volatile boolean autoLighting = true;
     private long lastEglErrorLogMs;
     private final float[] transform = new float[16];
@@ -101,6 +104,10 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         mirrorLoc=GLES20.glGetUniformLocation(program,"uMirror");
         faceConfidenceLoc=GLES20.glGetUniformLocation(program,"uFaceConfidence");
         autoLightLoc=GLES20.glGetUniformLocation(program,"uAutoLight");
+        hasLandmarksLoc=GLES20.glGetUniformLocation(program,"uHasLandmarks");
+        leftEyeLoc=GLES20.glGetUniformLocation(program,"uLeftEye");
+        rightEyeLoc=GLES20.glGetUniformLocation(program,"uRightEye");
+        mouthLoc=GLES20.glGetUniformLocation(program,"uMouth");
         samplerLoc=GLES20.glGetUniformLocation(program,"sTexture");
         float[] vertices={-1,-1, 1,-1, -1,1, 1,1};
         float[] tex={0,1, 1,1, 0,0, 1,0};
@@ -129,8 +136,17 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         faceConfidence=CameraTransform.clamp(confidence, 0f, 1f);
         hasFace=right>left && bottom>top && faceConfidence>0.08f;
     }
+    void setFaceLandmarks(PointF leftEye, PointF rightEye, PointF mouth) {
+        hasLandmarks = leftEye != null && rightEye != null;
+        if (hasLandmarks) {
+            leftEyeX=leftEye.x; leftEyeY=leftEye.y;
+            rightEyeX=rightEye.x; rightEyeY=rightEye.y;
+            mouthX=mouth == null ? -1f : mouth.x;
+            mouthY=mouth == null ? -1f : mouth.y;
+        }
+    }
     void setAutoLighting(boolean enabled) { autoLighting=enabled; }
-    void clearFace() { hasFace=false; faceConfidence=0f; }
+    void clearFace() { hasFace=false; faceConfidence=0f; hasLandmarks=false; }
 
     Surface getCameraInputSurface() { return cameraInput; }
 
@@ -164,6 +180,10 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         GLES20.glUniform1i(mirrorLoc,mirrorFace?1:0);
         GLES20.glUniform1f(faceConfidenceLoc,faceConfidence);
         GLES20.glUniform1i(autoLightLoc,autoLighting?1:0);
+        GLES20.glUniform1i(hasLandmarksLoc,hasLandmarks?1:0);
+        GLES20.glUniform2f(leftEyeLoc,leftEyeX,leftEyeY);
+        GLES20.glUniform2f(rightEyeLoc,rightEyeX,rightEyeY);
+        GLES20.glUniform2f(mouthLoc,mouthX,mouthY);
         GLES20.glUniform4f(faceRectLoc,faceLeft,faceTop,faceRight,faceBottom);
         GLES20.glUniformMatrix4fv(matrixLoc,1,false,transform,0);
         vertexBuffer.position(0);
