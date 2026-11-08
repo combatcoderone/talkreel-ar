@@ -20,7 +20,7 @@ It is not a claim that the app is ready for public distribution.
 
 | Area | Status | Required work before a real release |
 |---|---|---|
-| Face tracking and effects | **Implemented foundation; device QA and advanced rendering remain** | MediaPipe Face Landmarker analyzes the Camera2 YUV stream off the camera/GL thread, returning 478 xyz landmarks, 52 blendshape scores and pose matrices for up to three faces. A smoothed result feeds the shared EGL renderer. Thirty face-anchored looks (makeup, Halloween, glasses, crown, jewelry and accessories) are rendered to both preview and encoder surfaces, so the live effect is recorded in the MP4. This is not yet a full commercial lens engine: true face-part segmentation, depth-based occlusion, rigged 3D assets and production-quality physically based makeup are still outstanding. Test orientation, thermal load, FPS, latency and exported output on physical devices. |
+| Face tracking and effects | **Implemented foundation; advanced rendering and device QA remain** | MediaPipe Face Landmarker analyzes the Camera2 YUV stream off the camera/GL thread, returning 478 xyz landmarks, 52 blendshape scores and pose matrices for up to three faces. A smoothed result feeds the shared EGL renderer. Thirty face-anchored looks (makeup, Halloween, glasses, crown, jewelry and accessories) are rendered to both preview and encoder surfaces, so the live effect is recorded in the MP4. This is not yet a full commercial lens engine: true face-part segmentation, depth-based occlusion, rigged 3D assets and production-quality physically based makeup are still outstanding. Test orientation, thermal load, FPS, latency and exported output on physical devices. |
 | Media export integration | **Build validation pending** | The Media3 path is wired here, but the new Gradle CI job must pass. Test music looping, audio gain, source audio preservation, caption timing, orientation, pause/resume and export failure on physical devices. |
 | Camera and recording | **Device validation pending** | Test front/rear cameras, permission denial/recovery, camera contention with social apps, app background/foreground, rotation, repeated record cycles, pause/resume and low-storage handling on supported Android versions. |
 | Audio quality and synchronization | **Device validation pending** | Listen to exported files on device; verify microphone/music balance, clipping, silence, A/V sync, Bluetooth routing, interruptions and long clips. |
@@ -46,7 +46,7 @@ It is not a claim that the app is ready for public distribution.
 
 Do not label this app production-ready until all of the following are true:
 
-1. The face-contour renderer is integrated into the shared camera/encoder render path, and physical-device tests prove all selected effects appear in the saved MP4. The current branch only renders contour effects in the live preview.
+1. The MediaPipe landmark-driven renderer is integrated into the shared camera/encoder EGL path, and physical-device tests prove that effects remain aligned and appear in the saved MP4 across front/rear cameras, head motion and recording lifecycle. CI compilation alone does not satisfy this gate.
 2. The Media3 build passes CI and the resulting MP4 is inspected on physical devices.
 3. The device test matrix covers at least one current Pixel-class device and one Samsung device, plus the oldest Android API level the product supports.
 4. Billing, permanent signing, privacy/legal review and music-rights review are complete.
@@ -100,3 +100,10 @@ The AAB is still a release *candidate*, not a release: physical-device acceptanc
 - The model is downloaded by a Gradle preBuild task and packaged into the APK, so no first-run model download is required on the device.
 - Current renderer is a 2D overlay renderer driven by 3D face landmarks and expression scores. It is not yet a fully rigged 3D asset pipeline; no dense face-part segmentation or depth/occlusion compositing is implemented. Those remain explicit release blockers for claims of Snapchat-equivalent quality.
 - The MediaPipe frame conversion and 3-face inference path needs physical-device performance validation. Build success alone does not establish stable FPS, thermal behavior, accurate camera rotation/mirroring or effect alignment.
+
+
+## Multi-face tracking stabilization follow-up
+
+- Face detections are now re-associated between frames by nearest face-center matching before temporal smoothing. This avoids blending the previous frame's landmark history into a different person when MediaPipe changes the ordering of up to three simultaneous detections.
+- This is a tracking-stability improvement, not persistent biometric identity tracking. A face that disappears and re-enters the frame receives a new smoothing history.
+- The renderer remains a 2D GPU overlay system. The 3D landmark z-coordinate and pose matrices are retained in the frame payload but are not yet a complete 3D asset/occlusion pipeline.
