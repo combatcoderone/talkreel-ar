@@ -8,6 +8,7 @@ import android.app.Service;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.PixelFormat;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -51,6 +52,8 @@ public class TalkReelService extends Service {
     private int overlayTeleHeight = 260;
     private int overlayTextSize = 26;
     private boolean overlayScrollRunning = false;
+    private boolean overlayCollapsed = false;
+    private LinearLayout overlayControls;
     private Handler handler = new Handler(Looper.getMainLooper());
     private Runnable ticker = new Runnable() {
         public void run() {
@@ -151,180 +154,189 @@ public class TalkReelService extends Service {
 
     private void refreshOverlayButtons() {
         if (recButton != null) recButton.setText(overlayScrollRunning ? "Pause scroll" : "Start scroll");
-        if (pauseButton != null) pauseButton.setText("Reset text");
+        if (pauseButton != null) pauseButton.setText("Rewind");
         if (overlayTimer != null) overlayTimer.setText(overlayScrollRunning ? "Teleprompter scrolling" : "Teleprompter paused");
     }
 
     private void showOverlay() {
-        if (overlayView != null) {
-            refreshOverlayButtons();
-            return;
-        }
+        if (overlayView != null) { refreshOverlayButtons(); return; }
         if (Build.VERSION.SDK_INT >= 23 && !android.provider.Settings.canDrawOverlays(this)) {
             Toast.makeText(this, "Overlay permission is off. Allow TalkReel over other apps, then tap Overlay again.", Toast.LENGTH_LONG).show();
             Intent i = new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:" + getPackageName()));
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            try { startActivity(i); } catch (Exception e) {}
+            try { startActivity(i); } catch (Exception ignored) {}
             return;
         }
         SharedPreferences prefs = getSharedPreferences("talkreel", MODE_PRIVATE);
         AppState.script = prefs.getString("script", AppState.script);
         AppState.speed = prefs.getFloat("speed", 1.0f);
-        AppState.showFrame = prefs.getBoolean("showFrame", true);
         AppState.textColorIndex = prefs.getInt("textColor", 0);
         overlayTextSize = prefs.getInt("teleprompterTextSize", 26);
 
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
-        if (windowManager == null) {
-            Toast.makeText(this, "Overlay failed: no WindowManager.", Toast.LENGTH_LONG).show();
-            return;
-        }
+        if (windowManager == null) return;
         DisplayMetrics dm = new DisplayMetrics();
-        try { windowManager.getDefaultDisplay().getMetrics(dm); } catch (Exception e) {}
-        int screenW = dm.widthPixels > 0 ? dm.widthPixels : 1080;
-        int screenH = dm.heightPixels > 0 ? dm.heightPixels : 1920;
-        int teleH = Math.max(180, Math.min(340, (int) (screenH * 0.22)));
-        overlayTeleHeight = teleH;
+        try { windowManager.getDefaultDisplay().getMetrics(dm); } catch (Exception ignored) {}
+        final int screenW = dm.widthPixels > 0 ? dm.widthPixels : 1080;
+        final int screenH = dm.heightPixels > 0 ? dm.heightPixels : 1920;
 
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setBackground(UiStyle.panelBg());
-        layout.setPadding(12, 12, 12, 12);
+        final LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(14, 10, 14, 12);
+        GradientDrawable panel = new GradientDrawable();
+        panel.setColor(0xE91A1D24);
+        panel.setCornerRadius(24);
+        panel.setStroke(1, 0x44FFFFFF);
+        root.setBackground(panel);
+
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        TextView brand = new TextView(this);
+        brand.setText("TALKREEL  /  TELEPROMPTER");
+        brand.setTextColor(0xFFF4F5F7);
+        brand.setTextSize(11);
+        brand.setTypeface(null, android.graphics.Typeface.BOLD);
+        header.addView(brand, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         overlayTimer = new TextView(this);
-        overlayTimer.setText("Ready");
-        overlayTimer.setTextColor(0xFFFFFFFF);
-        overlayTimer.setTextSize(12);
-        layout.addView(overlayTimer);
-        TextView modeNote = new TextView(this);
-        modeNote.setText("Camera access is first-come, first-served. If another app owns it, TalkReel waits and notifies you.");
-        modeNote.setTextColor(0xFFCCCCCC);
-        modeNote.setTextSize(11);
-        modeNote.setPadding(2, 4, 2, 8);
-        layout.addView(modeNote);
+        overlayTimer.setText("READY");
+        overlayTimer.setTextColor(0xFFB9C0CA);
+        overlayTimer.setTextSize(10);
+        overlayTimer.setPadding(6, 0, 8, 0);
+        header.addView(overlayTimer);
+
+        final Button collapse = new Button(this);
+        collapse.setText("−");
+        collapse.setTextColor(0xFFFFFFFF);
+        collapse.setTextSize(18);
+        collapse.setMinWidth(42);
+        collapse.setPadding(0, 0, 0, 0);
+        collapse.setBackgroundColor(Color.TRANSPARENT);
+        header.addView(collapse, new LinearLayout.LayoutParams(44, 42));
+        root.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 44));
+
+        overlayControls = new LinearLayout(this);
+        overlayControls.setOrientation(LinearLayout.VERTICAL);
+        overlayControls.setPadding(0, 6, 0, 0);
 
         overlayScroll = new SafeScrollView(this);
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams((int) (screenW * 0.74f), teleH);
-        overlayScroll.setLayoutParams(sp);
         overlayScroll.setVerticalScrollBarEnabled(false);
+        overlayScroll.setFillViewport(false);
+        int scriptHeight = Math.max(104, Math.min(190, (int)(screenH * 0.14f)));
+        overlayScroll.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, scriptHeight));
         overlayText = new TextView(this);
         overlayText.setText(AppState.script);
         overlayText.setTextColor(AppState.textColor());
         overlayText.setTextSize(overlayTextSize);
-        overlayText.setLineSpacing(8, 1.35f);
+        overlayText.setLineSpacing(5, 1.22f);
         overlayText.setPadding(8, 8, 8, 8);
         overlayScroll.addView(overlayText);
-        layout.addView(overlayScroll);
+        overlayControls.addView(overlayScroll);
 
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout transport = new LinearLayout(this);
+        transport.setOrientation(LinearLayout.HORIZONTAL);
         recButton = UiStyle.primary(this, "Start scroll");
-        recButton.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                overlayScrollRunning = !overlayScrollRunning;
-                refreshOverlayButtons();
-            }
+        recButton.setOnClickListener(v -> {
+            overlayScrollRunning = !overlayScrollRunning;
+            refreshOverlayButtons();
         });
-        row.addView(recButton);
+        transport.addView(recButton);
         pauseButton = UiStyle.dark(this, "Rewind");
-        pauseButton.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                overlayScrollRunning = false;
-                if (overlayScroll != null) overlayScroll.scrollTo(0, 0);
-                refreshOverlayButtons();
-            }
+        pauseButton.setOnClickListener(v -> {
+            overlayScrollRunning = false;
+            if (overlayScroll != null) overlayScroll.scrollTo(0, 0);
+            refreshOverlayButtons();
         });
-        row.addView(pauseButton);
-        layout.addView(row);
+        transport.addView(pauseButton);
+        overlayControls.addView(transport);
 
-        LinearLayout row2 = new LinearLayout(this);
-        row2.setOrientation(LinearLayout.HORIZONTAL);
-        final Button textButton = UiStyle.dark(this, "Text color: " + AppState.textColorName());
-        textButton.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                AppState.nextTextColor();
-                getSharedPreferences("talkreel", MODE_PRIVATE).edit().putInt("textColor", AppState.textColorIndex).apply();
-                textButton.setText("Text color: " + AppState.textColorName());
-                if (overlayText != null) overlayText.setTextColor(AppState.textColor());
+        LinearLayout tools = new LinearLayout(this);
+        tools.setOrientation(LinearLayout.HORIZONTAL);
+        Button smaller = UiStyle.dark(this, "A−");
+        smaller.setOnClickListener(v -> {
+            overlayTextSize = Math.max(16, overlayTextSize - 2);
+            if (overlayText != null) overlayText.setTextSize(overlayTextSize);
+            prefs.edit().putInt("teleprompterTextSize", overlayTextSize).apply();
+        });
+        tools.addView(smaller);
+        Button larger = UiStyle.dark(this, "A+");
+        larger.setOnClickListener(v -> {
+            overlayTextSize = Math.min(48, overlayTextSize + 2);
+            if (overlayText != null) overlayText.setTextSize(overlayTextSize);
+            prefs.edit().putInt("teleprompterTextSize", overlayTextSize).apply();
+        });
+        tools.addView(larger);
+        Button color = UiStyle.dark(this, "Text color");
+        color.setOnClickListener(v -> {
+            AppState.nextTextColor();
+            prefs.edit().putInt("textColor", AppState.textColorIndex).apply();
+            if (overlayText != null) overlayText.setTextColor(AppState.textColor());
+        });
+        tools.addView(color);
+        Button music = UiStyle.dark(this, "Music");
+        music.setOnClickListener(v -> {
+            if (MusicEngine.isPlaying()) {
+                MusicEngine.stop();
+                music.setText("Music");
+            } else {
+                int idx = prefs.getInt("musicTrack", 0);
+                if (idx < 0 || idx >= MusicCatalog.TRACKS.length) idx = 0;
+                MusicEngine.play(TalkReelService.this, MusicCatalog.TRACKS[idx], true,
+                        new Handler(Looper.getMainLooper()), null);
+                music.setText("Music on");
             }
         });
-        row2.addView(textButton);
-        Button smallerButton = UiStyle.dark(this, "Text size −");
-        smallerButton.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                overlayTextSize = Math.max(16, overlayTextSize - 2);
-                if (overlayText != null) overlayText.setTextSize(overlayTextSize);
-                getSharedPreferences("talkreel", MODE_PRIVATE).edit().putInt("teleprompterTextSize", overlayTextSize).apply();
-            }
+        tools.addView(music);
+        overlayControls.addView(tools);
+        root.addView(overlayControls);
+
+        collapse.setOnClickListener(v -> {
+            overlayCollapsed = !overlayCollapsed;
+            overlayControls.setVisibility(overlayCollapsed ? View.GONE : View.VISIBLE);
+            collapse.setText(overlayCollapsed ? "+" : "−");
         });
-        row2.addView(smallerButton);
-        Button largerButton = UiStyle.dark(this, "Text size +");
-        largerButton.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                overlayTextSize = Math.min(48, overlayTextSize + 2);
-                if (overlayText != null) overlayText.setTextSize(overlayTextSize);
-                getSharedPreferences("talkreel", MODE_PRIVATE).edit().putInt("teleprompterTextSize", overlayTextSize).apply();
-            }
-        });
-        row2.addView(largerButton);
-        // v0.7.0: old Sound button played synthesized beeps. Now it plays
-        // the track picked in the Music section, streamed if not downloaded.
-        final Button musicButton = UiStyle.dark(this, "Preview music");
-        musicButton.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                if (MusicEngine.isPlaying()) {
-                    MusicEngine.stop();
-                    musicButton.setText("Preview music");
-                } else {
-                    int idx = getSharedPreferences("talkreel", MODE_PRIVATE).getInt("musicTrack", 0);
-                    if (idx < 0 || idx >= MusicCatalog.TRACKS.length) idx = 0;
-                    MusicEngine.play(TalkReelService.this, MusicCatalog.TRACKS[idx], true, new android.os.Handler(android.os.Looper.getMainLooper()), null);
-                    musicButton.setText("Music playing");
-                }
-            }
-        });
-        row2.addView(musicButton);
-        Button close = UiStyle.dark(this, "Close overlay");
-        close.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) { stopOverlay(); }
-        });
-        row2.addView(close);
-        layout.addView(row2);
 
         final WindowManager.LayoutParams params;
-        if (Build.VERSION.SDK_INT >= 26) {
-            params = new WindowManager.LayoutParams((int) (screenW * 0.78f), WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT);
-        } else {
-            params = new WindowManager.LayoutParams(screenW - 32, WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.TYPE_PHONE,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT);
-        }
+        int overlayType = Build.VERSION.SDK_INT >= 26
+                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                : WindowManager.LayoutParams.TYPE_PHONE;
+        params = new WindowManager.LayoutParams(
+                Math.min((int)(screenW * 0.94f), screenW - 24),
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                overlayType,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT);
         params.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
-        params.y = 60;
+        params.y = Math.max(48, (int)(screenH * 0.08f));
 
-        layout.setOnTouchListener(new View.OnTouchListener() {
-            private int lastY = 0;
-            private boolean dragging = false;
-            public boolean onTouch(View v, MotionEvent e) {
-                if (e.getAction() == MotionEvent.ACTION_DOWN) { lastY = (int) e.getRawY(); dragging = true; return true; }
-                if (e.getAction() == MotionEvent.ACTION_MOVE && dragging) {
-                    int dy = (int) e.getRawY() - lastY;
-                    params.y += dy;
-                    lastY = (int) e.getRawY();
-                    try { windowManager.updateViewLayout(overlayView, params); } catch (Exception ex) {}
+        // Only the header drags the panel, so buttons and teleprompter scrolling remain usable.
+        header.setOnTouchListener(new View.OnTouchListener() {
+            private float downX, downY;
+            private int startX, startY;
+            public boolean onTouch(View view, MotionEvent event) {
+                if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                    downX = event.getRawX(); downY = event.getRawY();
+                    startX = params.x; startY = params.y;
                     return true;
                 }
-                if (e.getAction() == MotionEvent.ACTION_UP) { dragging = false; return true; }
-                return false;
+                if (event.getAction() == MotionEvent.ACTION_MOVE) {
+                    params.x = startX + (int)(event.getRawX() - downX);
+                    params.y = Math.max(0, startY + (int)(event.getRawY() - downY));
+                    try { windowManager.updateViewLayout(root, params); } catch (Exception ignored) {}
+                    return true;
+                }
+                return event.getAction() == MotionEvent.ACTION_UP;
             }
         });
 
-        overlayView = layout;
+        overlayView = root;
+        overlayCollapsed = false;
         try {
             windowManager.addView(overlayView, params);
-            Toast.makeText(this, "Overlay on. Open Instagram or YouTube.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Teleprompter ready.", Toast.LENGTH_SHORT).show();
             handler.post(ticker);
         } catch (Exception e) {
             overlayView = null;
