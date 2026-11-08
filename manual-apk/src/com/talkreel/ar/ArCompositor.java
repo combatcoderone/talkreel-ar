@@ -51,7 +51,7 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     private int positionLoc, texCoordLoc, matrixLoc, orientationLoc, filterLoc, samplerLoc;
     private java.nio.FloatBuffer vertexBuffer, texBuffer;
     private volatile float faceLeft, faceTop, faceRight, faceBottom;
-    private volatile boolean hasFace, mirrorFace;
+    private volatile boolean hasFace;
     private final float[] transform = new float[16];
     private final float[] orientationMatrix = new float[16];
     private boolean released;
