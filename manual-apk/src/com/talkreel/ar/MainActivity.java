@@ -1543,9 +1543,22 @@ public class MainActivity extends Activity {
                     }
                 }
                 public void onConfigureFailed(CameraCaptureSession session) {
-                    mainHandler.post(new Runnable() { public void run() {
-                        if (statusView != null) statusView.setText("Camera preview configuration failed.");
-                    }});
+                    try { session.close(); } catch (Exception ignored) {}
+                    if (faceImageReader != null) {
+                        try { faceImageReader.close(); } catch (Exception ignored) {}
+                        faceImageReader = null;
+                        mainHandler.post(new Runnable() {
+                            public void run() {
+                                if (coachView != null) coachView.setText("Face contour analysis is not supported by this camera stream.");
+                                if (statusView != null) statusView.setText("Camera preview active · face tracking unavailable on this device");
+                            }
+                        });
+                        startPreview();
+                    } else {
+                        mainHandler.post(new Runnable() { public void run() {
+                            if (statusView != null) statusView.setText("Camera preview configuration failed.");
+                        }});
+                    }
                 }
             }, cameraHandler);
         } catch (Exception e) {
