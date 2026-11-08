@@ -130,8 +130,8 @@ public class ProFrameView extends View {
         paint.setStyle(Paint.Style.FILL); paint.setColor(colors[1]); paint.setAlpha(155);
         if(!lips.isEmpty()) c.drawPath(lips,paint);
         // Blush is anchored to detected cheek landmarks.
-        drawCheek(c,face,FaceLandmark.LEFT_CHEEK,w,h,colors[2]);
-        drawCheek(c,face,FaceLandmark.RIGHT_CHEEK,w,h,colors[2]);
+        drawCheek(c,face,FaceContour.LEFT_CHEEK,w,h,colors[2]);
+        drawCheek(c,face,FaceContour.RIGHT_CHEEK,w,h,colors[2]);
         // A restrained contour outline helps the Halloween collection read as makeup.
         if(preset>=10) {
             drawContour(c,face,FaceContour.FACE,w,h,colors[2],false);
