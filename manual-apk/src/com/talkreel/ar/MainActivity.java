@@ -1413,7 +1413,9 @@ public class MainActivity extends Activity {
                             ? (360 - ((sensorDegrees + displayDegrees) % 360)) % 360
                             : (sensorDegrees - displayDegrees + 360) % 360;
                     // ML Kit receives the sensor image, so do not apply the front-preview mirror inversion.
-                    faceInputRotationDegrees = (sensorDegrees - displayDegrees + 360) % 360;
+                    faceInputRotationDegrees = isFrontCamera
+                            ? (sensorDegrees + displayDegrees) % 360
+                            : (sensorDegrees - displayDegrees + 360) % 360;
                     android.hardware.camera2.params.StreamConfigurationMap streamMap =
                             chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
                     if (streamMap != null) {
