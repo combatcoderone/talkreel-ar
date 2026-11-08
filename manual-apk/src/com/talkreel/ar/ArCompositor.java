@@ -18,33 +18,19 @@ import android.os.Handler;
 final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     private static final String VERTEX =
         "attribute vec4 aPosition; attribute vec2 aTexCoord; " +
-        "uniform mat4 uTexMatrix; varying vec2 vTexCoord; " +
-        "void main(){ gl_Position=aPosition; vTexCoord=(uTexMatrix*vec4(aTexCoord,0.0,1.0)).xy; }";
+        "uniform mat4 uTexMatrix; uniform mat4 uOrientationMatrix; varying vec2 vTexCoord; " +
+        "void main(){ gl_Position=aPosition; vTexCoord=(uTexMatrix*uOrientationMatrix*vec4(aTexCoord,0.0,1.0)).xy; }";
     private static final String FRAGMENT =
-        "#extension GL_OES_EGL_image_external : require\n" +
+        "#extension GL_OES_EGL_image_external : require\\n" +
         "precision mediump float; varying vec2 vTexCoord; " +
-        "uniform samplerExternalOES sTexture; uniform int uFilter; uniform vec4 uFaceRect; uniform int uHasFace; uniform int uMirror; " +
-        "void main(){ vec4 c=texture2D(sTexture,vTexCoord); " +
-        "if(uFilter==1){ c.rgb=mix(c.rgb,vec3(dot(c.rgb,vec3(.299,.587,.114))),.08); c.rgb=min(vec3(1.0),c.rgb*1.10+vec3(.025)); } " +
-        "else if(uFilter==2){ c.rgb=mix(c.rgb,vec3(.12,.24,.34),.12); } " +
-        "else if(uFilter==3){ c.rgb=mix(c.rgb,vec3(.95,.56,.68),.08); } " +
-        "else if(uFilter==4){ c.rgb=min(vec3(1.0),c.rgb*1.18); } " +
-        "else if(uFilter==5){ float l=dot(c.rgb,vec3(.299,.587,.114)); c.rgb=mix(c.rgb,vec3(l*.35,l*.9, min(1.0,l*1.5)),.32); } " +
-        "else if(uFilter==6){ vec3 soft=(texture2D(sTexture,vTexCoord+vec2(.002,0.)).rgb+texture2D(sTexture,vTexCoord-vec2(.002,0.)).rgb+texture2D(sTexture,vTexCoord+vec2(0.,.002)).rgb+texture2D(sTexture,vTexCoord-vec2(0.,.002)).rgb)*.25; c.rgb=mix(c.rgb,soft,.24); c.rgb=min(vec3(1.0),c.rgb*1.04); } " +
-        "else if(uFilter==7){ c.rgb=mix(c.rgb,vec3(1.0,.48,.62),.07); } " +
-        "else if(uFilter==8){ c.rgb=mix(c.rgb,vec3(.10,.12,.16),.12); } " +
-        "else if(uFilter==9){ c.rgb=mix(c.rgb,vec3(.72,.45,.22),.08); } " +
-        "else if(uFilter==10){ c.rgb=mix(c.rgb,vec3(.62,.39,.22),.10); } " +
-        "if(uHasFace==1 && uFilter>=2 && uFilter<=10){ vec2 q=vec2(vTexCoord.x,1.0-vTexCoord.y); if(uMirror==1) q.x=1.0-q.x; vec2 sz=uFaceRect.zw-uFaceRect.xy; vec2 ctr=(uFaceRect.xy+uFaceRect.zw)*.5; " +
-        "if(uFilter==2){ vec2 e=ctr+vec2(0.,-sz.y*.10); vec2 l=(q-(e+vec2(-sz.x*.23,0.)))/vec2(sz.x*.20,sz.y*.105); vec2 r=(q-(e+vec2(sz.x*.23,0.)))/vec2(sz.x*.20,sz.y*.105); if(dot(l,l)<1.0||dot(r,r)<1.0)c.rgb=mix(c.rgb,vec3(.08,.55,.92),.68); } " +
-        "if(uFilter==3){ vec2 l=(q-(ctr+vec2(-sz.x*.27,-sz.y*.64)))/vec2(sz.x*.13,sz.y*.34); vec2 r=(q-(ctr+vec2(sz.x*.27,-sz.y*.64)))/vec2(sz.x*.13,sz.y*.34); if(dot(l,l)<1.0||dot(r,r)<1.0)c.rgb=mix(c.rgb,vec3(1.0,.55,.72),.88); } " +
-        "if(uFilter==4 && q.y<ctr.y-sz.y*.56 && q.y>ctr.y-sz.y*1.02 && abs(q.x-ctr.x)<sz.x*.5)c.rgb=mix(c.rgb,vec3(1.0,.72,.08),.95); " +
-        "if(uFilter==5){ float edge=min(min(abs(q.x-uFaceRect.x),abs(q.x-uFaceRect.z)),min(abs(q.y-uFaceRect.y),abs(q.y-uFaceRect.w))); if(edge<.009)c.rgb=mix(c.rgb,vec3(.0,.95,1.0),.98); } " +
-        "if(uFilter==7){ vec2 l=(q-(ctr+vec2(-sz.x*.23,sz.y*.18)))/vec2(sz.x*.12,sz.y*.075); vec2 r=(q-(ctr+vec2(sz.x*.23,sz.y*.18)))/vec2(sz.x*.12,sz.y*.075); vec2 lip=(q-(ctr+vec2(0.,sz.y*.32)))/vec2(sz.x*.20,sz.y*.055); if(dot(l,l)<1.0||dot(r,r)<1.0)c.rgb=mix(c.rgb,vec3(1.0,.28,.42),.52); if(dot(lip,lip)<1.0)c.rgb=mix(c.rgb,vec3(.78,.05,.22),.82); } " +
-        "if(uFilter==8 && abs(q.x-ctr.x)<sz.x*.48 && q.y>ctr.y-sz.y*.48 && q.y<ctr.y+sz.y*.48){ c.rgb=mix(c.rgb,vec3(.16,.18,.22),.40); } " +
-        "if(uFilter==9 && q.y<ctr.y-sz.y*.52 && q.y>ctr.y-sz.y*1.0 && abs(q.x-ctr.x)<sz.x*.5){ c.rgb=mix(c.rgb,vec3(.20,.12,.08),.92); } " +
-        "if(uFilter==10 && q.y<ctr.y-sz.y*.28 && q.y>ctr.y-sz.y*.95 && abs(q.x-ctr.x)<sz.x*.62){ c.rgb=mix(c.rgb,vec3(.45,.24,.12),.82); } " +
-        "} gl_FragColor=c; }";
+        "uniform samplerExternalOES sTexture; uniform int uFilter; " +
+        "void main(){ vec3 c=texture2D(sTexture,vTexCoord).rgb; " +
+        "if(uFilter==1){ c.r=min(1.0,c.r*1.035+0.008); c.g=min(1.0,c.g*1.012); c.b*=0.975; } " +
+        "else if(uFilter==2){ c.r*=0.975; c.g*=1.005; c.b=min(1.0,c.b*1.045+0.006); } " +
+        "else if(uFilter==3){ c=(c-vec3(0.5))*1.10+vec3(0.5); c.r=min(1.0,c.r*1.025); c.b*=0.985; } " +
+        "else if(uFilter==4){ c=mix(c,vec3(dot(c,vec3(0.299,0.587,0.114))),0.10); c=min(vec3(1.0),c*1.025+vec3(0.008)); } " +
+        "else if(uFilter==5){ float y=dot(c,vec3(0.2126,0.7152,0.0722)); c=vec3(y); } " +
+        "gl_FragColor=vec4(clamp(c,0.0,1.0),1.0); }";
 
     private final Handler handler;
     private EGLDisplayHolder egl;
@@ -56,11 +42,12 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     private EGL14Surface encoderEgl;
     private int program, textureId;
     private volatile int filter;
-    private int positionLoc, texCoordLoc, matrixLoc, filterLoc, faceRectLoc, hasFaceLoc, mirrorLoc, samplerLoc;
+    private int positionLoc, texCoordLoc, matrixLoc, orientationLoc, filterLoc, samplerLoc;
     private java.nio.FloatBuffer vertexBuffer, texBuffer;
     private volatile float faceLeft, faceTop, faceRight, faceBottom;
     private volatile boolean hasFace, mirrorFace;
     private final float[] transform = new float[16];
+    private final float[] orientationMatrix = new float[16];
     private boolean released;
 
     ArCompositor(Handler handler) { this.handler=handler; }
@@ -84,10 +71,9 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         positionLoc=GLES20.glGetAttribLocation(program,"aPosition");
         texCoordLoc=GLES20.glGetAttribLocation(program,"aTexCoord");
         matrixLoc=GLES20.glGetUniformLocation(program,"uTexMatrix");
+        orientationLoc=GLES20.glGetUniformLocation(program,"uOrientationMatrix");
         filterLoc=GLES20.glGetUniformLocation(program,"uFilter");
-        faceRectLoc=GLES20.glGetUniformLocation(program,"uFaceRect");
-        hasFaceLoc=GLES20.glGetUniformLocation(program,"uHasFace");
-        mirrorLoc=GLES20.glGetUniformLocation(program,"uMirror");
+        android.opengl.Matrix.setIdentityM(orientationMatrix,0);
         samplerLoc=GLES20.glGetUniformLocation(program,"sTexture");
         float[] vertices={-1,-1, 1,-1, -1,1, 1,1};
         float[] tex={0,1, 1,1, 0,0, 1,0};
@@ -106,6 +92,14 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     }
 
     void setFilter(int value) { filter=value; }
+    void setCameraOrientation(int degrees) {
+        checkThread();
+        int rotation=((degrees%360)+360)%360;
+        android.opengl.Matrix.setIdentityM(orientationMatrix,0);
+        android.opengl.Matrix.translateM(orientationMatrix,0,0.5f,0.5f,0f);
+        android.opengl.Matrix.rotateM(orientationMatrix,0,rotation,0f,0f,1f);
+        android.opengl.Matrix.translateM(orientationMatrix,0,-0.5f,-0.5f,0f);
+    }
     void setFaceRect(float left,float top,float right,float bottom,boolean mirrored) {
         faceLeft=left; faceTop=top; faceRight=right; faceBottom=bottom;
         mirrorFace=mirrored; hasFace=right>left && bottom>top;
@@ -134,10 +128,8 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES,textureId);
         GLES20.glUniform1i(samplerLoc,0);
         GLES20.glUniform1i(filterLoc,filter);
-        GLES20.glUniform1i(hasFaceLoc,hasFace?1:0);
-        GLES20.glUniform1i(mirrorLoc,mirrorFace?1:0);
-        GLES20.glUniform4f(faceRectLoc,faceLeft,faceTop,faceRight,faceBottom);
         GLES20.glUniformMatrix4fv(matrixLoc,1,false,transform,0);
+        GLES20.glUniformMatrix4fv(orientationLoc,1,false,orientationMatrix,0);
         vertexBuffer.position(0);
         texBuffer.position(0);
         GLES20.glEnableVertexAttribArray(positionLoc);
