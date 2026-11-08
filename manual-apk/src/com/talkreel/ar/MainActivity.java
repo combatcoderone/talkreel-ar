@@ -68,6 +68,7 @@ public class MainActivity extends Activity {
     private volatile boolean activityDestroyed = false;
     private volatile boolean activityResumed = false;
     private volatile int faceDetectMode = CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF;
+    private volatile int cameraRotationDegrees = 0;
     private TextureView textureView;
     private ProFrameView frameView;
     private TextView statusView;
@@ -260,7 +261,7 @@ public class MainActivity extends Activity {
         previewBox.addView(frameView);
         root.addView(previewBox);
         TextView arNote = new TextView(this);
-        arNote.setText("AR effects are composited by the GPU into Studio preview and recorded video. Effects use camera face rectangles, not dense facial landmarks.");
+        arNote.setText("Camera looks are applied consistently to the live preview and saved video.");
         arNote.setTextColor(0xFFAAAAAA);
         arNote.setTextSize(11);
         arNote.setPadding(8, 3, 8, 5);
@@ -367,13 +368,13 @@ public class MainActivity extends Activity {
             }
         });
         rowPro.addView(faceButton);
-        final Button arFilterButton = UiStyle.dark(this, "AR effect: " + ProFrameView.filterName(AppState.arFilter));
+        final Button arFilterButton = UiStyle.dark(this, "Camera look: " + ProFrameView.filterName(AppState.arFilter));
         arFilterButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 AppState.arFilter = (AppState.arFilter + 1) % ProFrameView.FILTER_COUNT;
                 frameView.setFilter(AppState.arFilter);
                 if (arCompositor != null) arCompositor.setFilter(AppState.arFilter);
-                arFilterButton.setText("AR effect: " + ProFrameView.filterName(AppState.arFilter));
+                arFilterButton.setText("Camera look: " + ProFrameView.filterName(AppState.arFilter));
                 savePrefs();
                 statusView.setText("AR effect: " + ProFrameView.filterName(AppState.arFilter) + " · Applied to preview and recording");
             }
@@ -753,13 +754,13 @@ public class MainActivity extends Activity {
         final Spinner ar = new Spinner(this); String[] effects = new String[ProFrameView.FILTER_COUNT];
         for(int i=0;i<effects.length;i++) effects[i]=ProFrameView.filterName(i);
         ar.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, effects));
-        ar.setSelection(AppState.arFilter); form.addView(settingsLabel("AR / makeup effect")); form.addView(ar);
+        ar.setSelection(AppState.arFilter); form.addView(settingsLabel("Camera look")); form.addView(ar);
         final Spinner music = new Spinner(this); String[] tracks = new String[MusicCatalog.TRACKS.length];
         for(int i=0;i<tracks.length;i++) tracks[i]=MusicCatalog.TRACKS[i].title;
         music.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, tracks));
         music.setSelection(Math.max(0,Math.min(musicTrackIndex,tracks.length-1)));
         form.addView(settingsLabel("Music track")); form.addView(music);
-        final Spinner shape = new Spinner(this); String[] shapes = {"Rectangle","Circle","Heart","Oval"};
+        final Spinner shape = new Spinner(this); String[] shapes = {"Rounded frame","Circle","Oval","Portrait oval"};
         shape.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, shapes));
         shape.setSelection(Math.max(0,Math.min(selfieFrameShape,shapes.length-1)));
         form.addView(settingsLabel("Selfie frame shape")); form.addView(shape);
@@ -1372,6 +1373,15 @@ public class MainActivity extends Activity {
                     }
                     Integer facing = chars.get(CameraCharacteristics.LENS_FACING);
                     isFrontCamera = facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT;
+                    Integer sensorOrientation = chars.get(CameraCharacteristics.SENSOR_ORIENTATION);
+                    int displayRotation = getWindowManager().getDefaultDisplay().getRotation();
+                    int displayDegrees = displayRotation == Surface.ROTATION_90 ? 90
+                            : displayRotation == Surface.ROTATION_180 ? 180
+                            : displayRotation == Surface.ROTATION_270 ? 270 : 0;
+                    int sensorDegrees = sensorOrientation == null ? 0 : sensorOrientation;
+                    cameraRotationDegrees = isFrontCamera
+                            ? (sensorDegrees + displayDegrees) % 360
+                            : (sensorDegrees - displayDegrees + 360) % 360;
                     if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) { cameraOpening = false; return; }
                     manager.openCamera(cameraId, new CameraDevice.StateCallback() {
                         public void onOpened(CameraDevice camera) {
@@ -1451,6 +1461,7 @@ public class MainActivity extends Activity {
             if (arCompositor == null) arCompositor = new ArCompositor(cameraHandler);
             Surface cameraSurface = arCompositor.start(texture, 720, 1280);
             arCompositor.setFilter(AppState.arFilter);
+            arCompositor.setCameraOrientation(cameraRotationDegrees);
             if (captureSession != null) {
                 try { captureSession.close(); } catch (Exception ignored) {}
                 captureSession = null;
