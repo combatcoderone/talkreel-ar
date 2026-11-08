@@ -269,7 +269,7 @@ public class MainActivity extends Activity {
         previewBox.addView(frameView);
         root.addView(previewBox);
         TextView arNote = new TextView(this);
-        arNote.setText("Camera looks are applied consistently to the live preview and saved video.");
+        arNote.setText("20 face-contour makeup and Halloween looks · Live preview only in this build; saved-video effect rendering is still in progress.");
         arNote.setTextColor(0xFFAAAAAA);
         arNote.setTextSize(11);
         arNote.setPadding(8, 3, 8, 5);
@@ -1328,8 +1328,9 @@ public class MainActivity extends Activity {
                         mainHandler.post(new Runnable() {
                             @Override public void run() {
                                 if (frameView != null && !activityDestroyed)
-                                    frameView.setFaceResults(faces, width, height,
-                                            faceInputRotationDegrees, isFrontCamera);
+                                    int uprightWidth = (faceInputRotationDegrees % 180 == 90) ? height : width;
+                                int uprightHeight = (faceInputRotationDegrees % 180 == 90) ? width : height;
+                                frameView.setFaceResults(faces, uprightWidth, uprightHeight, 0, isFrontCamera);
                                 if (coachView != null && !activityDestroyed)
                                     coachView.setText(faces.isEmpty()
                                             ? "Face not found · Move closer and face the camera"
@@ -1515,7 +1516,7 @@ public class MainActivity extends Activity {
             if (arCompositor == null) arCompositor = new ArCompositor(cameraHandler);
             Surface cameraSurface = arCompositor.start(texture, cameraBufferWidth, cameraBufferHeight);
             arCompositor.setFilter(AppState.arFilter % 6);
-            arCompositor.setCameraOrientation(cameraRotationDegrees);
+            arCompositor.setCameraOrientation(cameraRotationDegrees, isFrontCamera);
             if (captureSession != null) {
                 try { captureSession.close(); } catch (Exception ignored) {}
                 captureSession = null;
