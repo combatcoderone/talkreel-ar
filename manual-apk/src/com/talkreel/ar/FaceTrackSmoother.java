@@ -2,6 +2,7 @@ package com.talkreel.ar;
 
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.PointF;
 import android.hardware.camera2.params.Face;
 
 /**
@@ -17,11 +18,16 @@ final class FaceTrackSmoother {
         final float confidence;
         final boolean coasting;
         final long timestampNs;
-        Snapshot(RectF bounds, float confidence, boolean coasting, long timestampNs) {
+        final PointF leftEye, rightEye, mouth;
+        Snapshot(RectF bounds, float confidence, boolean coasting, long timestampNs,
+                 PointF leftEye, PointF rightEye, PointF mouth) {
             this.bounds = new RectF(bounds);
             this.confidence = confidence;
             this.coasting = coasting;
             this.timestampNs = timestampNs;
+            this.leftEye = leftEye == null ? null : new PointF(leftEye.x, leftEye.y);
+            this.rightEye = rightEye == null ? null : new PointF(rightEye.x, rightEye.y);
+            this.mouth = mouth == null ? null : new PointF(mouth.x, mouth.y);
         }
     }
 
@@ -32,6 +38,7 @@ final class FaceTrackSmoother {
     private long lastSeenNs;
     private long lastUpdateNs;
     private float vx, vy, vw, vh;
+    private PointF smoothLeftEye, smoothRightEye, smoothMouth;
 
     synchronized Snapshot update(Face[] faces, Rect activeArray, Rect crop,
                                  boolean mirror, long timestampNs) {
@@ -42,6 +49,9 @@ final class FaceTrackSmoother {
         if (measured == null) return coast(timestampNs);
 
         float score = best.getScore();
+        PointF leftEye = CameraTransform.mapSensorPoint(best.getLeftEyePosition(), activeArray, crop, mirror);
+        PointF rightEye = CameraTransform.mapSensorPoint(best.getRightEyePosition(), activeArray, crop, mirror);
+        PointF mouth = CameraTransform.mapSensorPoint(best.getMouthPosition(), activeArray, crop, mirror);
         if (score < MIN_SCORE) return coast(timestampNs);
         float dt = lastUpdateNs == 0 ? 1f / 30f :
                 Math.max(1f / 120f, Math.min(0.15f, (timestampNs - lastUpdateNs) / 1_000_000_000f));
@@ -49,6 +59,8 @@ final class FaceTrackSmoother {
         if (smoothed == null || timestampNs - lastSeenNs > COAST_NS * 2) {
             smoothed = new RectF(measured);
             vx = vy = vw = vh = 0f;
+        smoothLeftEye = smoothRightEye = smoothMouth = null;
+            smoothLeftEye = leftEye; smoothRightEye = rightEye; smoothMouth = mouth;
         } else {
             float cx = measured.centerX(), cy = measured.centerY();
             float sx = smoothed.centerX(), sy = smoothed.centerY();
@@ -66,11 +78,14 @@ final class FaceTrackSmoother {
             vh = lerp(vh, (newH - oldH) / dt, 0.30f);
             smoothed.set(newCx - newW * 0.5f, newCy - newH * 0.5f,
                     newCx + newW * 0.5f, newCy + newH * 0.5f);
+            smoothLeftEye = smoothPoint(smoothLeftEye, leftEye, alpha);
+            smoothRightEye = smoothPoint(smoothRightEye, rightEye, alpha);
+            smoothMouth = smoothPoint(smoothMouth, mouth, alpha);
         }
         faceId = best.getId();
         lastSeenNs = timestampNs;
         lastUpdateNs = timestampNs;
-        return new Snapshot(smoothed, score / 100f, false, timestampNs);
+        return new Snapshot(smoothed, score / 100f, false, timestampNs, smoothLeftEye, smoothRightEye, smoothMouth);
     }
 
     private Face choose(Face[] faces, Rect activeArray, Rect crop, boolean mirror) {
@@ -112,7 +127,7 @@ final class FaceTrackSmoother {
         float dy = CameraTransform.clamp(vy * seconds, -0.06f, 0.06f);
         RectF predicted = new RectF(smoothed);
         predicted.offset(dx, dy);
-        return new Snapshot(predicted, 1f - t, true, timestampNs);
+        return new Snapshot(predicted, 1f - t, true, timestampNs, smoothLeftEye, smoothRightEye, smoothMouth);
     }
 
     synchronized void reset() {
@@ -120,6 +135,12 @@ final class FaceTrackSmoother {
         faceId = -1;
         lastSeenNs = lastUpdateNs = 0;
         vx = vy = vw = vh = 0f;
+    }
+
+    private static PointF smoothPoint(PointF oldPoint, PointF next, float alpha) {
+        if (next == null) return oldPoint;
+        if (oldPoint == null) return new PointF(next.x, next.y);
+        return new PointF(lerp(oldPoint.x, next.x, alpha), lerp(oldPoint.y, next.y, alpha));
     }
 
     private static float lerp(float a, float b, float t) { return a + (b - a) * t; }
