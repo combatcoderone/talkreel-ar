@@ -188,7 +188,8 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
             drawPolygon(mesh,LIPS,lip,0.0f);
             drawCircle(mesh,117,cheek,0.027f);
             drawCircle(mesh,346,cheek,0.027f);
-            if(effect>=10) drawHalloween(mesh,expr);
+            if(effect>=10 && effect<20) drawHalloween(mesh,expr);
+            else if(effect>=20) drawAccessories(mesh);
             else if(effect==1 || effect==3 || effect==9) drawSparkleAccents(mesh);
         }
         GLES20.glDisable(GLES20.GL_BLEND);
@@ -225,6 +226,11 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
             case 14:return 0xCC3A1D61; case 15:return 0xBB9BAAB2;
             case 16:return 0xEE671019; case 17:return 0xCC2A0C38;
             case 18:return 0xCC9A2638; case 19:return 0xEE00CFEA;
+            case 20:return 0xBB4AA9E8; case 21:return 0xBBE7B93E;
+            case 22:return 0xBBEAD9D1; case 23:return 0xBB7D4C9B;
+            case 24:return 0xBBE9C8D8; case 25:return 0xBBF4DDAA;
+            case 26:return 0xBB3F91D4; case 27:return 0xDD00CFEA;
+            case 28:return 0xBBE4B2D5; case 29:return 0xBB3FC3DE;
             default:return 0xBB9A405D;
         }
     }
@@ -290,6 +296,81 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
                 drawLine(mesh,33,263,0xCC00EFFF,2.5f);
                 break;
         }
+    }
+
+    private void drawAccessories(float[] m) {
+        switch(effect) {
+            case 20: // Crystal glasses follow both orbital rims.
+                drawOutline(m,LEFT_EYE,0xFF8EDBFF,3.0f);
+                drawOutline(m,RIGHT_EYE,0xFF8EDBFF,3.0f);
+                drawLine(m,133,362,0xFFB8F0FF,2.6f);
+                drawLine(m,33,127,0xFF8EDBFF,2.2f);
+                drawLine(m,263,356,0xFF8EDBFF,2.2f);
+                break;
+            case 21: // Gold crown anchored to the upper face mesh.
+                drawPolygon(m,new int[]{10,67,103,54,21,162,127,234},0xDDE9B93E,0);
+                drawTriangle(m,10,54,67,0xFFFFD66A);
+                drawTriangle(m,10,336,296,0xFFFFD66A);
+                drawCircle(m,9,0xFFFFF1B8,0.012f);
+                break;
+            case 22: // Pearl ear and jaw jewelry.
+                drawCircle(m,234,0xFFEFE5DD,0.018f);
+                drawCircle(m,454,0xFFEFE5DD,0.018f);
+                drawCircle(m,152,0xFFEFE5DD,0.014f);
+                drawCircle(m,172,0xFFEFE5DD,0.010f);
+                drawCircle(m,397,0xFFEFE5DD,0.010f);
+                break;
+            case 23: // Cat ears.
+                drawPolygonCoords(around(point(m,10),-0.11f,-0.08f,-0.035f,-0.24f,0.01f,-0.08f),0xDD493052);
+                drawPolygonCoords(around(point(m,10),0.035f,-0.08f,0.11f,-0.24f,0.14f,-0.07f),0xDD493052);
+                break;
+            case 24: // Bunny ears.
+                drawPolygonCoords(around(point(m,10),-0.09f,-0.05f,-0.13f,-0.28f,-0.045f,-0.24f),0xDDE9C8D8);
+                drawPolygonCoords(around(point(m,10),0.04f,-0.05f,0.13f,-0.25f,0.10f,-0.04f),0xDDE9C8D8);
+                break;
+            case 25: // Halo.
+                float[] top=point(m,10);
+                drawCircleAt(top[0],top[1]-0.12f,0xFFFFE7A8,0.105f,0.018f);
+                break;
+            case 26: // Butterfly wings at the temples.
+                drawTriangle(m,234,127,93,0xBB7BC8F4);
+                drawTriangle(m,234,132,58,0xBBE5A2CF);
+                drawTriangle(m,454,356,323,0xBB7BC8F4);
+                drawTriangle(m,454,361,288,0xBBE5A2CF);
+                break;
+            case 27: // Cyber visor.
+                drawPolygon(m,new int[]{33,160,158,133,362,385,387,263},0xBB00D9F5,0);
+                drawLine(m,33,263,0xFF8DF7FF,3.0f);
+                break;
+            case 28: // Star-like freckles.
+                for(int i=0;i<4;i++){drawCircle(m,117+i,0xFFFFD4F1,0.009f);drawCircle(m,346-i,0xFFFFD4F1,0.009f);}
+                drawCircle(m,50,0xFFFFD4F1,0.007f);
+                drawCircle(m,280,0xFFFFD4F1,0.007f);
+                break;
+            case 29: // Graphic rainbow face paint.
+                drawLine(m,10,50,0xFFFF4C68,3.0f);
+                drawLine(m,10,101,0xFFFFB83D,3.0f);
+                drawLine(m,10,205,0xFF56C98A,3.0f);
+                drawLine(m,10,280,0xFF4B9BEA,3.0f);
+                drawLine(m,10,330,0xFFB56BE8,3.0f);
+                break;
+        }
+    }
+    private float[] around(float[] center,float... offsets) {
+        float[] p=new float[offsets.length];
+        for(int i=0;i<offsets.length;i+=2){p[i]=center[0]+offsets[i];p[i+1]=center[1]+offsets[i+1];}
+        return p;
+    }
+    private void drawCircleAt(float x,float y,int color,float rx,float ry) {
+        float[] p=new float[48];
+        for(int i=0;i<24;i++){double a=i*Math.PI/12;p[i*2]=x+(float)Math.cos(a)*rx;p[i*2+1]=y+(float)Math.sin(a)*ry;}
+        drawPolygonCoords(p,color);
+    }
+    private void drawOutline(float[] m,int[] indices,int color,float width) {
+        float[] p=new float[indices.length*2];
+        for(int i=0;i<indices.length;i++){float[] q=point(m,indices[i]);p[i*2]=q[0];p[i*2+1]=q[1];}
+        drawPolyline(p,color,width);
+        drawLineCoords(p[0],p[1],p[p.length-2],p[p.length-1],color,width);
     }
 
     private void drawSparkleAccents(float[] m) {
