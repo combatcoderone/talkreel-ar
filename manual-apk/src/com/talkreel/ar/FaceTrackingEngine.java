@@ -43,7 +43,10 @@ public final class FaceTrackingEngine implements AutoCloseable {
     private volatile boolean closed;
     private FaceLandmarker landmarker;
     private long lastTimestamp;
+    // Previous meshes are re-associated by face center each frame. MediaPipe's
+    // result order is not a persistent identity when multiple people are visible.
     private final float[][] previous=new float[3][];
+    private final float[][] previousCenters=new float[3][2];
 
     public FaceTrackingEngine(Context context,Listener listener) {
         this.listener=listener;
@@ -114,11 +117,39 @@ public final class FaceTrackingEngine implements AutoCloseable {
                     float[] matrix=matrixResult.get().get(f);
                     if(matrix!=null)System.arraycopy(matrix,0,poses[f],0,Math.min(16,matrix.length));
                 }
-                if(previous[f]!=null&&previous[f].length==mesh.length)
-                    for(int i=0;i<mesh.length;i++)mesh[i]=previous[f][i]*0.35f+mesh[i]*0.65f;
-                previous[f]=mesh.clone();
             }
-            for(int i=count;i<previous.length;i++)previous[i]=null;
+            // Match detections to the nearest prior face center before smoothing.
+            // This prevents two people crossing paths from inheriting each other's
+            // landmark history merely because MediaPipe changed result ordering.
+            float[][] nextPrevious=new float[3][];
+            float[][] nextCenters=new float[3][2];
+            boolean[] usedPrevious=new boolean[3];
+            for(int f=0;f<count;f++) {
+                float[] mesh=meshes[f];
+                float cx=faceCenterX(mesh), cy=faceCenterY(mesh);
+                int best=-1;
+                float bestDistance=0.20f;
+                for(int oldIndex=0;oldIndex<previous.length;oldIndex++) {
+                    if(usedPrevious[oldIndex]||previous[oldIndex]==null)continue;
+                    float dx=cx-previousCenters[oldIndex][0];
+                    float dy=cy-previousCenters[oldIndex][1];
+                    float distance=(float)Math.sqrt(dx*dx+dy*dy);
+                    if(distance<bestDistance){bestDistance=distance;best=oldIndex;}
+                }
+                if(best>=0) {
+                    usedPrevious[best]=true;
+                    float[] oldMesh=previous[best];
+                    for(int i=0;i<mesh.length;i++)mesh[i]=oldMesh[i]*0.35f+mesh[i]*0.65f;
+                }
+                nextPrevious[f]=mesh.clone();
+                nextCenters[f][0]=cx;
+                nextCenters[f][1]=cy;
+            }
+            for(int i=0;i<previous.length;i++) {
+                previous[i]=nextPrevious[i];
+                previousCenters[i][0]=nextCenters[i][0];
+                previousCenters[i][1]=nextCenters[i][1];
+            }
             if(!closed&&listener!=null)listener.onFaces(new FaceFrame(meshes,expressions,poses,timestamp),
                 rotated.getWidth(),rotated.getHeight());
         } catch(Exception e) {
@@ -154,6 +185,12 @@ public final class FaceTrackingEngine implements AutoCloseable {
         Bitmap bitmap=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);
         bitmap.setPixels(pixels,0,w,0,0,w,h);
         return bitmap;
+    }
+    private static float faceCenterX(float[] mesh) {
+        return (mesh[1*3]+mesh[152*3]+mesh[234*3]+mesh[454*3])*0.25f;
+    }
+    private static float faceCenterY(float[] mesh) {
+        return (mesh[1*3+1]+mesh[152*3+1]+mesh[234*3+1]+mesh[454*3+1])*0.25f;
     }
     private static int clamp(int v){return Math.max(0,Math.min(255,v));}
 
