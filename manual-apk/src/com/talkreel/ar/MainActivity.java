@@ -69,6 +69,8 @@ public class MainActivity extends Activity {
     private volatile boolean activityResumed = false;
     private volatile int faceDetectMode = CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF;
     private volatile int cameraRotationDegrees = 0;
+    private volatile int cameraBufferWidth = 1280;
+    private volatile int cameraBufferHeight = 720;
     private TextureView textureView;
     private ProFrameView frameView;
     private TextView statusView;
@@ -1382,6 +1384,28 @@ public class MainActivity extends Activity {
                     cameraRotationDegrees = isFrontCamera
                             ? (360 - ((sensorDegrees + displayDegrees) % 360)) % 360
                             : (sensorDegrees - displayDegrees + 360) % 360;
+                    android.hardware.camera2.params.StreamConfigurationMap streamMap =
+                            chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+                    if (streamMap != null) {
+                        android.util.Size[] outputs = streamMap.getOutputSizes(SurfaceTexture.class);
+                        if (outputs != null && outputs.length > 0) {
+                            float targetRatio = (sensorDegrees % 180 == 90) ? (16f / 9f) : (9f / 16f);
+                            android.util.Size best = null;
+                            double bestScore = Double.MAX_VALUE;
+                            for (android.util.Size size : outputs) {
+                                int sw = size.getWidth(), sh = size.getHeight();
+                                if (sw <= 0 || sh <= 0 || sw > 1920 || sh > 1920) continue;
+                                float ratio = Math.max(sw, sh) / (float) Math.min(sw, sh);
+                                double ratioError = Math.abs(ratio - targetRatio);
+                                double areaPenalty = 1.0 - Math.min(1.0, (sw * (double) sh) / (1280d * 720d));
+                                double score = ratioError * 100.0 + areaPenalty;
+                                if (score < bestScore) { bestScore = score; best = size; }
+                            }
+                            if (best == null) best = outputs[0];
+                            cameraBufferWidth = best.getWidth();
+                            cameraBufferHeight = best.getHeight();
+                        }
+                    }
                     if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) { cameraOpening = false; return; }
                     manager.openCamera(cameraId, new CameraDevice.StateCallback() {
                         public void onOpened(CameraDevice camera) {
@@ -1459,7 +1483,7 @@ public class MainActivity extends Activity {
             SurfaceTexture texture = textureView.getSurfaceTexture();
             if (texture == null) return;
             if (arCompositor == null) arCompositor = new ArCompositor(cameraHandler);
-            Surface cameraSurface = arCompositor.start(texture, 720, 1280);
+            Surface cameraSurface = arCompositor.start(texture, cameraBufferWidth, cameraBufferHeight);
             arCompositor.setFilter(AppState.arFilter);
             arCompositor.setCameraOrientation(cameraRotationDegrees);
             if (captureSession != null) {
