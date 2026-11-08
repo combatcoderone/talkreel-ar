@@ -152,7 +152,7 @@ Banuba's published figures are lab results, not guarantees. Its marketing claims
 - Run `42442399501` passed both APK and Media3 jobs for commit `6787de009876652971d4c11db53cf908180533eb`; the APK job verified that the Face Landmarker model asset was packaged.
 - The subsequent test-enabled run `42443233810` failed in both jobs because `src/test/java` was also compiled as production Java and JUnit was therefore absent from the Android main compile classpath.
 - Commit `429b23cb924c9fe9d37a1da16f508920327b9f33` excludes `**/test/**` from the Android main source set. A fresh successful run for this fix and the later follow-up commits has not been confirmed.
-- The current feature branch is 2 commits behind `main`; GitHub reports the comparison as diverged. Reconcile the branch with the current mainline and rerun CI before merge.
+- The original PR #19 branch diverged from `main`; its implementation has been ported onto `feature/talkreel-mediapipe-mainline`, which is based on the current `main` commit. PR #23 is the current integration review target.
 - No physical-device tests have been performed in this audit. CI does not validate camera orientation, mesh alignment, thermal performance, or recorded-video appearance.
 
-**Release gate:** keep the PR in draft until the current head passes both CI jobs, the branch is reconciled with `main`, and the documented Pixel/Samsung device matrix is signed off.
+**Release gate:** PR #23 is now based directly on `main`; keep it in draft until its current head passes both CI jobs and the documented Pixel/Samsung device matrix is signed off.
