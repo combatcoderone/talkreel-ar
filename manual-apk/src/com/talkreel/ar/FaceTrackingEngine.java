@@ -29,7 +29,8 @@ public final class FaceTrackingEngine implements AutoCloseable {
         public final float[][] blendshapes;
         public final float[][] poseMatrices;
         public final long timestampMs;
-        FaceFrame(float[][] p,float[][] b,float[][] matrices,long t){landmarks=p;blendshapes=b;poseMatrices=matrices;timestampMs=t;}
+        public final long inferenceMs;
+        FaceFrame(float[][] p,float[][] b,float[][] matrices,long t,long elapsed){landmarks=p;blendshapes=b;poseMatrices=matrices;timestampMs=t;inferenceMs=elapsed;}
         public int faceCount(){return landmarks.length;}
     }
     public interface Listener {
@@ -81,6 +82,7 @@ public final class FaceTrackingEngine implements AutoCloseable {
     private void processFrame(Image image,int rotationDegrees) {
         Bitmap raw=null,rotated=null;
         MPImage input=null;
+        long inferenceStarted=SystemClock.elapsedRealtime();
         try {
             if(closed||landmarker==null)return;
             raw=toBitmap(image);
@@ -150,7 +152,8 @@ public final class FaceTrackingEngine implements AutoCloseable {
                 previousCenters[i][0]=nextCenters[i][0];
                 previousCenters[i][1]=nextCenters[i][1];
             }
-            if(!closed&&listener!=null)listener.onFaces(new FaceFrame(meshes,expressions,poses,timestamp),
+            long inferenceElapsed=SystemClock.elapsedRealtime()-inferenceStarted;
+            if(!closed&&listener!=null)listener.onFaces(new FaceFrame(meshes,expressions,poses,timestamp,inferenceElapsed),
                 rotated.getWidth(),rotated.getHeight());
         } catch(Exception e) {
             if(!closed&&listener!=null)listener.onError("Face tracking frame failed: "+e.getMessage());
