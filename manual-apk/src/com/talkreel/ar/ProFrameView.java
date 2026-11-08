@@ -15,7 +15,8 @@ public final class ProFrameView extends View {
         "Natural Makeup","Soft Glam","Smoky Eye","Rose Gold","Bronze Glow",
         "Editorial Red","Nude Gloss","Berry Lip","Copper Shine","Bridal Glow",
         "Halloween Skull","Vampire","Pumpkin","Zombie","Witch","Ghost",
-        "Demon","Spider Queen","Porcelain Doll","Neon Phantom",\n        "Crystal Glasses","Gold Crown","Pearl Jewelry","Cat Ears","Bunny Ears",\n        "Halo","Butterfly Wings","Cyber Visor","Star Freckles","Rainbow Face Paint"
+        "Demon","Spider Queen","Porcelain Doll","Neon Phantom",
+        "Crystal Glasses","Gold Crown","Pearl Jewelry","Cat Ears","Bunny Ears",\n        "Halo","Butterfly Wings","Cyber Visor","Star Freckles","Rainbow Face Paint"
     };
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
     private int preset=0,frameShape=0;
