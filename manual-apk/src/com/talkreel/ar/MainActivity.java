@@ -269,7 +269,7 @@ public class MainActivity extends Activity {
         previewBox.addView(frameView);
         root.addView(previewBox);
         TextView arNote = new TextView(this);
-        arNote.setText("20 face-contour makeup and Halloween looks · Live preview only in this build; saved-video effect rendering is still in progress.");
+        arNote.setText("30 face-tracked makeup, Halloween and accessory looks · Applied to live preview and recorded video.");
         arNote.setTextColor(0xFFAAAAAA);
         arNote.setTextSize(11);
         arNote.setPadding(8, 3, 8, 5);
@@ -1290,7 +1290,7 @@ public class MainActivity extends Activity {
 
     private Rect activeArray = null;
     private boolean isFrontCamera = true;
-    // Face geometry comes from ML Kit contours on the YUV analysis stream.
+    // Face geometry comes from MediaPipe 3D landmarks and expression coefficients on the YUV analysis stream.
     // Camera2 STATISTICS_FACES rectangles are deliberately not used as AR landmarks.
     private CameraCaptureSession.CaptureCallback faceCallback = new CameraCaptureSession.CaptureCallback() {
         @Override public void onCaptureCompleted(CameraCaptureSession s, CaptureRequest req, TotalCaptureResult result) {
@@ -1430,7 +1430,7 @@ public class MainActivity extends Activity {
                     cameraRotationDegrees = isFrontCamera
                             ? (360 - ((sensorDegrees + displayDegrees) % 360)) % 360
                             : (sensorDegrees - displayDegrees + 360) % 360;
-                    // ML Kit receives the sensor image, so do not apply the front-preview mirror inversion.
+                    // MediaPipe receives the sensor image; front-preview mirroring is applied only in the shared renderer.
                     faceInputRotationDegrees = isFrontCamera
                             ? (sensorDegrees + displayDegrees) % 360
                             : (sensorDegrees - displayDegrees + 360) % 360;
@@ -1573,7 +1573,7 @@ public class MainActivity extends Activity {
                         if (frameView != null) frameView.clearFaces();
                         mainHandler.post(new Runnable() {
                             public void run() {
-                                if (coachView != null) coachView.setText("Face contour analysis is not supported by this camera stream.");
+                                if (coachView != null) coachView.setText("Face analysis stream is not supported by this camera.");
                                 if (statusView != null) statusView.setText("Camera preview active · face tracking unavailable on this device");
                             }
                         });
