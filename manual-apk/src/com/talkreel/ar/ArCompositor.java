@@ -7,6 +7,7 @@ import android.opengl.GLES11Ext;
 import android.opengl.GLES20;
 import android.view.Surface;
 import android.os.Handler;
+import android.util.Log;
 import android.os.SystemClock;
 
 /**
@@ -41,7 +42,11 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     private EGL14Surface previewEgl;
     private Surface encoderSurface;
     private EGL14Surface encoderEgl;
-    private int program, textureId;
+    private int program, guideProgram, textureId;
+    private int guidePositionLoc, guideColorLoc;
+    private volatile int frameShape;
+    private long lastEglLogAt;
+    private String lastEglLogKey = "";
     private int overlayProgram, overlayPositionLoc, overlayColorLoc;
     private java.nio.FloatBuffer overlayBuffer;
     private volatile FaceTrackingEngine.FaceFrame faceFrame;
@@ -74,6 +79,11 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         cameraTexture.setOnFrameAvailableListener(this,handler);
         cameraInput=new Surface(cameraTexture);
         program=createProgram(VERTEX,FRAGMENT);
+        guideProgram=createProgram(
+                "attribute vec2 aPosition; void main(){ gl_Position=vec4(aPosition,0.0,1.0); }",
+                "precision mediump float; uniform vec4 uColor; void main(){ gl_FragColor=uColor; }");
+        guidePositionLoc=GLES20.glGetAttribLocation(guideProgram,"aPosition");
+        guideColorLoc=GLES20.glGetUniformLocation(guideProgram,"uColor");
         overlayProgram=createProgram("attribute vec2 aPosition; void main(){gl_Position=vec4(aPosition,0.0,1.0);}",
                 "precision mediump float; uniform vec4 uColor; void main(){gl_FragColor=uColor;}");
         overlayPositionLoc=GLES20.glGetAttribLocation(overlayProgram,"aPosition");
@@ -103,6 +113,7 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
     }
 
     void setFilter(int value) { filter=Math.max(0,Math.min(5,value)); }
+    void setFrameShape(int value) { frameShape=Math.max(0,Math.min(3,value)); }
     void setEffect(int value) { effect=Math.max(0,Math.min(29,value)); }
     void setFaceFrame(FaceTrackingEngine.FaceFrame frame, boolean mirrored) { faceFrame=frame; mirrorFace=mirrored; }
     void clearFaceFrame() { faceFrame=null; }
@@ -133,11 +144,17 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
             long timestamp=cameraTexture.getTimestamp();
             draw(previewEgl,timestamp);
             if(encoderEgl!=null) draw(encoderEgl,timestamp);
-        } catch (RuntimeException ignoredError) { }
+        } catch (RuntimeException error) {
+            logEglFailure("frame callback", error.getMessage());
+        }
     }
 
     private void draw(EGL14Surface target,long timestamp) {
-        if(target==null || !target.makeCurrent()) return;
+        if(target==null) return;
+        if(!target.makeCurrent()) {
+            logEglFailure("eglMakeCurrent", "error=0x" + Integer.toHexString(EGL14.eglGetError()));
+            return;
+        }
         GLES20.glViewport(0,0,target.width,target.height);
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
         GLES20.glUseProgram(program);
@@ -157,8 +174,14 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         GLES20.glDisableVertexAttribArray(positionLoc);
         GLES20.glDisableVertexAttribArray(texCoordLoc);
         drawFaceEffects();
-        if(target==encoderEgl && timestamp>0) EGLExt.eglPresentationTimeANDROID(egl.display,target.surface,timestamp);
-        EGL14.eglSwapBuffers(egl.display,target.surface);
+        if(target==encoderEgl) drawEncodedGuides();
+        if(target==encoderEgl && timestamp>0
+                && !EGLExt.eglPresentationTimeANDROID(egl.display,target.surface,timestamp)) {
+            logEglFailure("eglPresentationTimeANDROID", "error=0x" + Integer.toHexString(EGL14.eglGetError()));
+        }
+        if(!EGL14.eglSwapBuffers(egl.display,target.surface)) {
+            logEglFailure("eglSwapBuffers", "error=0x" + Integer.toHexString(EGL14.eglGetError()));
+        }
     }
 
 
@@ -173,7 +196,7 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
 
     private void drawFaceEffects() {
         FaceTrackingEngine.FaceFrame frame=faceFrame;
-        if(frame==null || SystemClock.uptimeMillis()-frame.timestampMs>450 || frame.faceCount()==0) return;
+        if(frame==null || SystemClock.uptimeMillis()-frame.timestampMs>200 || frame.faceCount()==0) return;
         GLES20.glUseProgram(overlayProgram);
         GLES20.glEnable(GLES20.GL_BLEND);
         GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA);
@@ -498,6 +521,7 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         released=true;
         if(egl!=null && previewEgl!=null) previewEgl.makeCurrent();
         if(program!=0){ GLES20.glDeleteProgram(program); program=0; }
+        if(guideProgram!=0){ GLES20.glDeleteProgram(guideProgram); guideProgram=0; }
         if(overlayProgram!=0){ GLES20.glDeleteProgram(overlayProgram); overlayProgram=0; }
         faceFrame=null;
         if(textureId!=0){ GLES20.glDeleteTextures(1,new int[]{textureId},0); textureId=0; }
@@ -510,6 +534,50 @@ final class ArCompositor implements SurfaceTexture.OnFrameAvailableListener {
         if(egl!=null){ egl.close(); egl=null; }
     }
 
+    /** Recreate display-only framing guides in GL for the encoded MP4. */
+    private void drawEncodedGuides() {
+        if (guideProgram == 0) return;
+        GLES20.glUseProgram(guideProgram);
+        GLES20.glEnable(GLES20.GL_BLEND);
+        GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA);
+        if (AppState.showFrame) {
+            drawGuideLine(-1f,-1f/3f,1f,-1f/3f,0.25f);
+            drawGuideLine(-1f,1f/3f,1f,1f/3f,0.25f);
+            drawGuideLine(-1f/3f,-1f,-1f/3f,1f,0.25f);
+            drawGuideLine(1f/3f,-1f,1f/3f,1f,0.25f);
+        }
+        if (frameShape==1 || frameShape==3) {
+            float[] oval=new float[128];
+            for(int i=0;i<64;i++){ double a=(Math.PI*2.0*i)/64.0; oval[i*2]=(float)(Math.cos(a)*0.66); oval[i*2+1]=(float)(0.14+Math.sin(a)*0.66); }
+            drawGuideVertices(oval,64,0.57f);
+        } else if (frameShape==2) {
+            float[] heart=new float[128];
+            for(int i=0;i<64;i++){ double t=(Math.PI*2.0*i)/64.0; double x=16*Math.pow(Math.sin(t),3)/16.0; double y=(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t))/16.0; heart[i*2]=(float)(x*0.66); heart[i*2+1]=(float)(0.14+y*0.66); }
+            drawGuideVertices(heart,64,0.57f);
+        } else {
+            float[] rect={-0.66f,-0.52f,0.66f,-0.52f,0.66f,-0.52f,0.66f,0.80f,0.66f,0.80f,-0.66f,0.80f,-0.66f,0.80f,-0.66f,-0.52f};
+            drawGuideVertices(rect,8,0.57f);
+        }
+        GLES20.glDisable(GLES20.GL_BLEND);
+    }
+    private void drawGuideLine(float x1,float y1,float x2,float y2,float alpha) { drawGuideVertices(new float[]{x1,y1,x2,y2},2,alpha); }
+    private void drawGuideVertices(float[] values,int count,float alpha) {
+        java.nio.FloatBuffer buffer=java.nio.ByteBuffer.allocateDirect(values.length*4).order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
+        buffer.put(values).position(0);
+        GLES20.glUniform4f(guideColorLoc,1f,1f,1f,alpha);
+        GLES20.glEnableVertexAttribArray(guidePositionLoc);
+        GLES20.glVertexAttribPointer(guidePositionLoc,2,GLES20.GL_FLOAT,false,0,buffer);
+        GLES20.glLineWidth(2f);
+        GLES20.glDrawArrays(count==2?GLES20.GL_LINES:GLES20.GL_LINE_LOOP,0,count);
+        GLES20.glDisableVertexAttribArray(guidePositionLoc);
+    }
+    private void logEglFailure(String operation,String detail) {
+        long now=android.os.SystemClock.uptimeMillis();
+        String key=operation+":"+String.valueOf(detail);
+        if(key.equals(lastEglLogKey)&&now-lastEglLogAt<5000L)return;
+        lastEglLogKey=key; lastEglLogAt=now;
+        Log.e("TalkReelEGL",operation+" failed: "+detail);
+    }
     private void checkThread() {
         if(handler.getLooper().getThread()!=Thread.currentThread()) throw new IllegalStateException("ArCompositor must be used on camera thread");
     }
