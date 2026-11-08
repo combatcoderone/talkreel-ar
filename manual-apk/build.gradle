@@ -57,6 +57,7 @@ dependencies {
     implementation 'androidx.media3:media3-common:1.11.1'
     // Bundled on-device model: no first-launch model download required.
     implementation 'com.google.mediapipe:tasks-vision:1.1.1'
+    testImplementation 'junit:junit:4.13.2'
 }
 
  
