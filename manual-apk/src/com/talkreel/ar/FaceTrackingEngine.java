@@ -135,7 +135,8 @@ public final class FaceTrackingEngine implements AutoCloseable {
     private static Bitmap toBitmap(Image image) {
         int w=image.getWidth(),h=image.getHeight();
         Image.Plane[] p=image.getPlanes();
-        ByteBuffer y=p[0].getBuffer(),u=p[1].getBuffer(),v=p[2].getBuffer();
+        ByteBuffer y=p[0].getBuffer().duplicate(),u=p[1].getBuffer().duplicate(),v=p[2].getBuffer().duplicate();
+        y.rewind();u.rewind();v.rewind();
         int yr=p[0].getRowStride(),yp=p[0].getPixelStride();
         int ur=p[1].getRowStride(),up=p[1].getPixelStride();
         int vr=p[2].getRowStride(),vp=p[2].getPixelStride();
